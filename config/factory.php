@@ -59,8 +59,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | "local" runs Claude Code directly on this machine, inside a dedicated
-    | workspace folder with Claude Code's sandbox turned on. A "docker" driver
-    | (one container per run) is planned for servers.
+    | workspace folder with Claude Code's sandbox turned on. "simulated" writes
+    | placeholder Spec Kit files instead (no AI, no cost; not in production).
+    | A "docker" driver (one container per run) is planned for servers.
     |
     */
 

@@ -1,4 +1,4 @@
-import { Form, Head, Link } from '@inertiajs/react';
+import { Form, Head, Link, router, usePoll } from '@inertiajs/react';
 import {
     CircleCheck,
     CircleDashed,
@@ -6,6 +6,7 @@ import {
     GitBranch,
     GitPullRequest,
     Lock,
+    Plus,
     RefreshCw,
     ScrollText,
     Settings,
@@ -13,22 +14,27 @@ import {
     TriangleAlert,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import Board from '@/components/board/board';
+import NewTicketDialog from '@/components/board/new-ticket-dialog';
+import TicketPanel from '@/components/board/ticket-panel';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
-import BoardPreview from '@/components/projects/board-preview';
 import CredentialStatus from '@/components/projects/credential-status';
 import RunStatusBadge, { formatCost } from '@/components/runs/run-status-badge';
 import StartRunDialog from '@/components/runs/start-run-dialog';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { dashboard } from '@/routes';
 import { edit, refresh, show } from '@/routes/projects';
 import { constitution, setup, show as showRun } from '@/routes/projects/runs';
 import type {
+    BoardColumn,
     Option,
     ProjectSummary,
     RunnerProblem,
     RunSummary,
+    TicketCard,
+    TicketDetail,
 } from '@/types';
 
 type Props = {
@@ -40,8 +46,14 @@ type Props = {
     runnerProblems: RunnerProblem[];
     models: Option[];
     efforts: Option[];
+    approvalModes: Option[];
     speckitVersion: string;
+    columns: BoardColumn[];
+    tickets: TicketCard[];
+    selectedTicket: TicketDetail | null;
 };
+
+const POLL_MS = 3000;
 
 export default function ShowProject({
     project,
@@ -52,9 +64,54 @@ export default function ShowProject({
     runnerProblems,
     models,
     efforts,
+    approvalModes,
     speckitVersion,
+    columns,
+    tickets,
+    selectedTicket,
 }: Props) {
     const routeArgs = { current_team: team.slug, project: project.slug };
+    const [openTicket, setOpenTicket] = useState<number | null>(
+        selectedTicket?.number ?? null,
+    );
+    const ticketOptions = { models, efforts, approvalModes };
+
+    // Open the panel when the server sends a ticket (e.g. right after creating one).
+    useEffect(() => {
+        if (selectedTicket) {
+            setOpenTicket(selectedTicket.number);
+        }
+    }, [selectedTicket?.number]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Refresh the board while anything is running.
+    const { start, stop } = usePoll(
+        POLL_MS,
+        { only: ['tickets', 'selectedTicket', 'runs'] },
+        { autoStart: false },
+    );
+    const anyRunning =
+        tickets.some((ticket) => ticket.status === 'running') ||
+        runs.some((run) => run.is_active);
+
+    useEffect(() => {
+        if (anyRunning) {
+            start();
+        } else {
+            stop();
+        }
+
+        return stop;
+    }, [anyRunning, start, stop]);
+
+    const openPanel = (number: number | null) => {
+        setOpenTicket(number);
+        router.get(show.url(routeArgs), number ? { ticket: number } : {}, {
+            only: ['selectedTicket'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
 
     return (
         <>
@@ -259,11 +316,62 @@ export default function ShowProject({
                 </div>
 
                 <section className="space-y-3">
-                    <h2 className="text-base font-medium">Runs</h2>
+                    <h2 className="text-base font-medium">Board</h2>
+                    {!project.speckit_initialized ? (
+                        <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                            You can add features now. Phases start once Spec Kit
+                            is set up in the repository.
+                        </p>
+                    ) : null}
+                    <Board
+                        columns={columns}
+                        tickets={tickets}
+                        routeArgs={routeArgs}
+                        canWork
+                        onOpen={(ticket) => openPanel(ticket.number)}
+                        backlogAction={
+                            <NewTicketDialog
+                                routeArgs={routeArgs}
+                                options={ticketOptions}
+                                defaults={{
+                                    model: project.default_model,
+                                    effort: project.default_effort,
+                                    approval_mode: project.approval_mode,
+                                }}
+                            >
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="justify-start"
+                                    data-test="new-ticket-button"
+                                >
+                                    <Plus /> New feature
+                                </Button>
+                            </NewTicketDialog>
+                        }
+                    />
+                </section>
+
+                <TicketPanel
+                    ticket={
+                        selectedTicket?.number === openTicket
+                            ? selectedTicket
+                            : null
+                    }
+                    open={openTicket !== null}
+                    onClose={() => openPanel(null)}
+                    routeArgs={routeArgs}
+                    canWork
+                    repoWebUrl={project.repo_web_url}
+                    options={ticketOptions}
+                />
+
+                <section className="space-y-3">
+                    <h2 className="text-base font-medium">Project runs</h2>
                     {runs.length === 0 ? (
                         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                            No runs yet. Agent runs for this project show up
-                            here.
+                            Spec Kit setup and constitution runs show up here.
+                            Feature runs are on each card.
                         </p>
                     ) : (
                         <div className="divide-y rounded-lg border">
@@ -303,14 +411,6 @@ export default function ShowProject({
                             ))}
                         </div>
                     )}
-                </section>
-
-                <section className="space-y-3">
-                    <div className="flex items-center gap-2">
-                        <h2 className="text-base font-medium">Board</h2>
-                        <Badge variant="secondary">Coming in Phase 4</Badge>
-                    </div>
-                    <BoardPreview />
                 </section>
             </div>
         </>

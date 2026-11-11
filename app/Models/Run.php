@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RunStatus;
 use App\Enums\RunType;
+use App\Tickets\TicketWorkflow;
 use Database\Factories\RunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +18,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $team_id
  * @property int $project_id
+ * @property int|null $ticket_id
+ * @property string|null $result_text
  * @property RunType $type
  * @property RunStatus $status
  * @property array<string, mixed>|null $input
@@ -41,10 +44,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Project $project
+ * @property-read Ticket|null $ticket
  * @property-read Team $team
  * @property-read User|null $triggeredBy
  */
-#[Fillable(['team_id', 'project_id', 'type', 'status', 'input', 'model', 'effort', 'base_branch', 'triggered_by'])]
+#[Fillable(['team_id', 'project_id', 'ticket_id', 'type', 'status', 'input', 'model', 'effort', 'base_branch', 'triggered_by'])]
 class Run extends Model
 {
     /** @use HasFactory<RunFactory> */
@@ -56,6 +60,14 @@ class Run extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class)->withTrashed();
+    }
+
+    /**
+     * @return BelongsTo<Ticket, $this>
+     */
+    public function ticket(): BelongsTo
+    {
+        return $this->belongsTo(Ticket::class)->withTrashed();
     }
 
     /**
@@ -89,6 +101,19 @@ class Run extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereIn('status', RunStatus::active());
+    }
+
+    /**
+     * Stop a queued run now, or ask the worker to stop a running one (it checks every couple of seconds).
+     */
+    public function requestCancel(): void
+    {
+        if ($this->status === RunStatus::Queued) {
+            $this->forceFill(['status' => RunStatus::Cancelled, 'finished_at' => now()])->save();
+            app(TicketWorkflow::class)->afterRun($this);
+        } elseif ($this->status === RunStatus::Running) {
+            $this->forceFill(['status' => RunStatus::Cancelling])->save();
+        }
     }
 
     /**
@@ -130,6 +155,8 @@ class Run extends Model
             'cost_usd' => (float) $this->cost_usd,
             'num_turns' => $this->num_turns,
             'error' => $this->error,
+            'ticket_id' => $this->ticket_id,
+            'is_reply' => ! empty($this->input['reply']),
             'triggered_by' => $this->triggeredBy?->name,
             'created_at' => $this->created_at?->toISOString(),
             'started_at' => $this->started_at?->toISOString(),

@@ -34,9 +34,22 @@ A Kanban board tracks each feature through the Spec Kit phases, and an AI agent 
 6. Cost, tokens, turns and the Claude session id are saved on the run. Cancel stops the agent within ~2 seconds.
 7. The run page polls for new log lines every 1.5 s while the run is active.
 
-Drivers: `FACTORY_RUNNER_DRIVER=local` now; a `docker` driver (one container per run) comes with server readiness.
+Drivers (`FACTORY_RUNNER_DRIVER`): `local` runs Claude Code; `simulated` writes placeholder Spec Kit files with no AI and no cost, for trying the board (refused in production); a `docker` driver (one container per run) comes with server readiness.
 
-Board columns (Phase 4): Backlog → Specify → Clarify → Plan → Tasks → Analyze → Implement → Review → Done
+## How the board works (built in Phase 4)
+
+Columns: Backlog → Specify → Clarify → Plan → Tasks → Analyze → Implement → Review → Done
+
+- A card is a feature. Moving it into a phase column starts that phase's run (`/speckit-specify`, `-clarify`, `-plan`, `-tasks`, `-analyze`, `-implement`).
+- Cards move forward only. A phase must finish ("Ready for review") before the card moves on. Clarify and Analyze are optional: dragging past them skips them; the other phases can't be skipped.
+- Approving can carry notes, passed to the next command (e.g. the tech stack for Plan).
+- Replying continues the same Claude session (`--resume`): answers to Clarify's questions, or requested changes to any phase.
+- Auto mode starts the next phase by itself, except after Clarify (its questions need a person) and after a reply.
+- First Specify run: the app picks a feature number above every `specs/NNN-*` on the base branch and every other ticket of the project, so parallel features never collide. Branch `NNN-short-title`, folder `specs/NNN-short-title`.
+- Every run: checks out the ticket's branch in `worktrees/ticket-{id}` (a stable folder, which Claude needs to resume sessions), passes `SPECIFY_FEATURE` and `SPECIFY_FEATURE_DIRECTORY`, commits "Phase: Title (#n)", pushes, and copies the feature folder's files (spec.md, plan.md, tasks.md, …) into the database for the ticket panel.
+- The agent is told it runs unattended: ask questions in its final message, don't commit or switch branches.
+- After Implement the card goes to Review, then Done (both moved by hand until Phase 5 adds PRs and webhooks).
+- Every team member can create and move cards; project settings and Spec Kit setup stay with owners and admins.
 
 ## Data model
 
@@ -45,8 +58,10 @@ Board columns (Phase 4): Backlog → Specify → Clarify → Plan → Tasks → 
 - `projects` — team, repo, credential, default model / effort / approval, merge policy — **Phase 2**
 - `runs` — type, status, model, effort, branch, commit, PR, tokens, cost, session id — **Phase 3**
 - `run_events` — the run's log lines — **Phase 3**
-- `tickets` — feature: title, description, column, position, branch, model, effort, approval mode, PR/MR info — Phase 4 (runs get a `ticket_id`)
-- `clarifications`, `approvals`, `activity_log` — Phase 4
+- `tickets` — number, title, description, stage, status, feature number / branch / folder, model, effort, approval mode, skip flags, Claude session id — **Phase 4**
+- `ticket_documents` — copies of the feature folder's files — **Phase 4**
+- `runs.ticket_id`, `runs.result_text` (the agent's final message) — **Phase 4**
+- `activity_log` — later
 
 ## Phases
 
@@ -69,8 +84,13 @@ Board columns (Phase 4): Backlog → Specify → Clarify → Plan → Tasks → 
     - Run page with live log, model / effort / duration / cost / tokens, PR link, cancel
     - Health check on the project page: git, Claude Code, Spec Kit version, workspace folder, Horizon
     - Live updates use polling instead of Reverb (fewer moving parts locally); Reverb can come with the board if needed
-4. **Board** — tickets as cards in phase columns; each phase is a run (`/speckit-specify`, `-clarify`, `-plan`, `-tasks`, `-analyze`, `-implement`); approval gates; clarify Q&A resumes the Claude session; spec/plan/tasks viewer
-5. **Git automation** — one branch per feature across phases, PR/MR after implement, merge policies, webhooks, conflict handling
+4. **Board** ✅
+    - Kanban board on the project page with drag and drop (dnd-kit); refreshes every 3 s while anything runs
+    - New feature dialog (title, description, model, effort, approval mode, skip Clarify / Analyze)
+    - Ticket panel: start / approve with notes / reply / retry / cancel, the agent's last message (questions, report, summary), rendered documents, run history, settings, delete
+    - Feature branch and folder per ticket; one commit per phase; session resume for replies (see "How the board works")
+    - `simulated` runner driver for trying the board without an API key
+5. **Git automation** — open the PR/MR after Implement, merge policies, webhooks that move cards to Done, rebase and conflict handling, optional `/speckit-converge`
 6. **Server readiness** — Docker runner driver, production config, HTTPS, backups
 
 ## Local setup

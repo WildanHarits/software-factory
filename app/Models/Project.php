@@ -164,6 +164,14 @@ class Project extends Model
         return $this->hasMany(Run::class);
     }
 
+    /**
+     * @return HasMany<Ticket, $this>
+     */
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class);
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';

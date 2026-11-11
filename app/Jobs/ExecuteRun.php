@@ -10,7 +10,9 @@ use App\Runner\RunFailed;
 use App\Runner\RunRecorder;
 use App\Runs\Pipelines\Pipeline;
 use App\Runs\Pipelines\SetupSpecKit;
+use App\Runs\Pipelines\TicketPhase;
 use App\Runs\Pipelines\UpdateConstitution;
+use App\Tickets\TicketWorkflow;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -36,12 +38,13 @@ class ExecuteRun implements ShouldQueue
         return match ($type) {
             RunType::SetupSpecKit => SetupSpecKit::class,
             RunType::Constitution => UpdateConstitution::class,
+            RunType::Specify, RunType::Clarify, RunType::Plan, RunType::Tasks, RunType::Analyze, RunType::Implement => TicketPhase::class,
         };
     }
 
     public function handle(): void
     {
-        $run = Run::query()->with(['project.gitCredential', 'project.aiCredential'])->find($this->runId);
+        $run = Run::query()->with(['project.gitCredential', 'project.aiCredential', 'ticket'])->find($this->runId);
 
         if (! $run) {
             return;
@@ -49,7 +52,7 @@ class ExecuteRun implements ShouldQueue
 
         // Cancelled before a worker picked it up.
         if (in_array($run->status, [RunStatus::Cancelling, RunStatus::Cancelled], true)) {
-            $run->forceFill(['status' => RunStatus::Cancelled, 'finished_at' => now()])->save();
+            $this->finish($run, RunStatus::Cancelled);
 
             return;
         }
@@ -97,5 +100,8 @@ class ExecuteRun implements ShouldQueue
     private function finish(Run $run, RunStatus $status, ?string $error = null): void
     {
         $run->forceFill(['status' => $status, 'error' => $error, 'finished_at' => now()])->save();
+
+        // Move the ticket on (or mark it failed). Auto mode may queue the next phase from here.
+        app(TicketWorkflow::class)->afterRun($run);
     }
 }

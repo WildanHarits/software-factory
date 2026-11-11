@@ -14,6 +14,9 @@ readonly class AgentInvocation
         public int $timeoutSeconds,
         public ?float $maxBudgetUsd = null,
         public ?string $resumeSessionId = null,
+        /** @var array<string, string> Extra environment variables, e.g. SPECIFY_FEATURE_DIRECTORY. */
+        public array $environment = [],
+        public ?string $appendSystemPrompt = null,
     ) {
         //
     }

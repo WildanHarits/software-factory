@@ -6,6 +6,7 @@ use App\Actions\Projects\ConnectRepository;
 use App\Enums\ApprovalMode;
 use App\Enums\MergePolicy;
 use App\Enums\RunType;
+use App\Enums\TicketStage;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Projects\StoreProjectRequest;
 use App\Http\Requests\Projects\UpdateProjectRequest;
@@ -13,6 +14,7 @@ use App\Models\Credential;
 use App\Models\Project;
 use App\Models\Run;
 use App\Models\Team;
+use App\Models\Ticket;
 use App\Models\User;
 use App\Runner\RunnerHealth;
 use App\Support\RepositoryReference;
@@ -95,7 +97,8 @@ class ProjectController extends Controller
         $project->load(['gitCredential.team', 'gitCredential.user', 'aiCredential.team', 'aiCredential.user', 'creator']);
         $canManage = $request->user()->can('update', $project);
 
-        $runs = $project->runs()->with('triggeredBy')->latest('id')->limit(10)->get();
+        $runs = $project->runs()->whereNull('ticket_id')->with('triggeredBy')->latest('id')->limit(10)->get();
+        $selected = $request->integer('ticket');
 
         // A setup PR that hasn't been merged yet (Spec Kit isn't on the default branch).
         $setupPullRequest = $project->speckit_initialized ? null : $project->runs()
@@ -114,6 +117,16 @@ class ProjectController extends Controller
             'models' => $this->options(config('factory.models')),
             'efforts' => $this->options(config('factory.efforts')),
             'speckitVersion' => config('factory.speckit.version'),
+            'columns' => TicketStage::columns(),
+            'tickets' => fn () => $project->tickets()
+                ->withSum('runs', 'cost_usd')
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(fn (Ticket $ticket) => $ticket->toCard()),
+            'selectedTicket' => fn () => $selected
+                ? $project->tickets()->with(['lastRun.triggeredBy', 'documents', 'creator'])->withSum('runs', 'cost_usd')->where('number', $selected)->first()?->toDetail()
+                : null,
+            'approvalModes' => ApprovalMode::options(),
         ]);
     }
 

@@ -4,7 +4,6 @@ namespace App\Runner;
 
 use App\Models\Credential;
 use App\Models\Project;
-use App\Models\Run;
 use Illuminate\Support\Facades\File;
 
 /**
@@ -26,6 +25,67 @@ class WorkspaceManager
     }
 
     /**
+     * Clone the project's repository if needed, then fetch the latest changes.
+     *
+     * @param  callable(string): void  $log
+     */
+    public function sync(Project $project, Credential $credential, callable $log, ?string $forBranch = null): void
+    {
+        $repo = $this->repoPath($project);
+
+        if (! File::isDirectory("{$repo}/.git")) {
+            $log("Cloning {$project->repo_full_name}");
+            File::ensureDirectoryExists(dirname($repo), 0700);
+            $this->git->run(['clone', '--no-checkout', $project->repo_clone_url, $repo], dirname($repo), $credential, timeout: 1800);
+        } else {
+            // The clone URL may have changed (e.g. the repo was renamed).
+            $this->git->run(['remote', 'set-url', 'origin', $project->repo_clone_url], $repo);
+        }
+
+        $log('Fetching the latest changes'.($forBranch ? " on {$forBranch}" : ''));
+        $this->git->run(['fetch', '--prune', 'origin'], $repo, $credential, timeout: 1800);
+    }
+
+    public function repoPath(Project $project): string
+    {
+        return $this->projectPath($project).'/repo';
+    }
+
+    /**
+     * The highest Spec Kit feature number ("012" in specs/012-photo-albums) on a remote branch.
+     * Call after createWorktree() has fetched.
+     */
+    public function highestFeatureNumber(Project $project, string $branch): int
+    {
+        try {
+            $listing = $this->git->run(['ls-tree', '--name-only', "refs/remotes/origin/{$branch}", 'specs/'], $this->repoPath($project));
+        } catch (RunFailed) {
+            return 0;
+        }
+
+        $highest = 0;
+
+        foreach (explode("\n", $listing) as $path) {
+            if (preg_match('#^specs/(\d{3,})-#', trim($path), $matches)) {
+                $highest = max($highest, (int) $matches[1]);
+            }
+        }
+
+        return $highest;
+    }
+
+    public function remoteBranchExists(Project $project, string $branch): bool
+    {
+        try {
+            $this->git->run(['rev-parse', '--verify', '--quiet', "refs/remotes/origin/{$branch}"], $this->repoPath($project));
+
+            return true;
+        } catch (RunFailed) {
+            return false;
+        }
+    }
+
+    /**
      * Where Claude Code keeps its sessions for this project (kept so later runs can resume them).
      */
     public function claudeConfigPath(Project $project): string
@@ -37,28 +97,22 @@ class WorkspaceManager
     }
 
     /**
-     * Check out a new branch for the run, starting from the latest commit on $baseBranch.
+     * Check out $branch in its own worktree, starting from the latest commit of $startBranch on the remote.
+     *
+     * $name keeps the folder stable between runs of the same ticket ("ticket-12"), which Claude Code
+     * needs to resume a session (it files sessions by folder).
      *
      * @param  callable(string): void  $log
      */
-    public function createWorktree(Project $project, Credential $credential, Run $run, string $branch, string $baseBranch, callable $log): string
+    public function createWorktree(Project $project, Credential $credential, string $name, string $branch, string $startBranch, callable $log): string
     {
-        $repo = $this->projectPath($project).'/repo';
-        $worktree = $this->projectPath($project)."/worktrees/run-{$run->id}";
+        $repo = $this->repoPath($project);
+        $worktree = $this->projectPath($project)."/worktrees/{$name}";
+        $baseBranch = $startBranch;
 
         File::ensureDirectoryExists(dirname($worktree), 0700);
 
-        if (! File::isDirectory("{$repo}/.git")) {
-            $log("Cloning {$project->repo_full_name}");
-            File::ensureDirectoryExists(dirname($repo), 0700);
-            $this->git->run(['clone', '--no-checkout', $project->repo_clone_url, $repo], dirname($repo), $credential, timeout: 1800);
-        } else {
-            // The clone URL may have changed (e.g. the repo was renamed).
-            $this->git->run(['remote', 'set-url', 'origin', $project->repo_clone_url], $repo);
-        }
-
-        $log("Fetching the latest changes on {$baseBranch}");
-        $this->git->run(['fetch', '--prune', 'origin'], $repo, $credential, timeout: 1800);
+        $this->sync($project, $credential, $log, $baseBranch);
 
         try {
             $this->git->run(['rev-parse', '--verify', '--quiet', "refs/remotes/origin/{$baseBranch}"], $repo);
@@ -70,7 +124,7 @@ class WorkspaceManager
             $this->removeWorktree($project, $worktree);
         }
 
-        $log("Creating branch {$branch}");
+        $log($branch === $baseBranch ? "Checking out {$branch}" : "Creating branch {$branch} from {$baseBranch}");
         $this->git->run(['worktree', 'add', '--force', '-B', $branch, $worktree, "origin/{$baseBranch}"], $repo);
 
         return $worktree;
@@ -78,7 +132,7 @@ class WorkspaceManager
 
     public function removeWorktree(Project $project, string $worktree): void
     {
-        $repo = $this->projectPath($project).'/repo';
+        $repo = $this->repoPath($project);
 
         try {
             $this->git->run(['worktree', 'remove', '--force', $worktree], $repo);

@@ -32,6 +32,7 @@ class LocalAgentRunner implements AgentRunner
             command: $this->command($invocation),
             cwd: $invocation->workingDirectory,
             env: ProcessEnvironment::clean([
+                ...$invocation->environment,
                 'ANTHROPIC_API_KEY' => $invocation->apiKey,
                 'CLAUDE_CONFIG_DIR' => $invocation->configDirectory,
                 'DISABLE_AUTOUPDATER' => '1',
@@ -104,6 +105,10 @@ class LocalAgentRunner implements AgentRunner
 
         if ($invocation->resumeSessionId) {
             array_push($command, '--resume', $invocation->resumeSessionId);
+        }
+
+        if ($invocation->appendSystemPrompt) {
+            array_push($command, '--append-system-prompt', $invocation->appendSystemPrompt);
         }
 
         return $command;

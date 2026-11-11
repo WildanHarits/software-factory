@@ -90,12 +90,7 @@ class RunController extends Controller
     {
         Gate::authorize('update', $project);
 
-        if ($run->status === RunStatus::Queued) {
-            $run->forceFill(['status' => RunStatus::Cancelled, 'finished_at' => now()])->save();
-        } elseif ($run->status === RunStatus::Running) {
-            // The worker notices within a couple of seconds and stops the agent.
-            $run->forceFill(['status' => RunStatus::Cancelling])->save();
-        }
+        $run->requestCancel();
 
         return back();
     }
@@ -109,7 +104,7 @@ class RunController extends Controller
             throw ValidationException::withMessages(['run' => __('This project has no git token. Pick one in the project settings.')]);
         }
 
-        if ($active = $project->runs()->active()->first()) {
+        if ($active = $project->runs()->whereNull('ticket_id')->active()->first()) {
             throw ValidationException::withMessages(['run' => __('":type" is still running for this project. Wait for it to finish or cancel it.', ['type' => $active->type->label()])]);
         }
 

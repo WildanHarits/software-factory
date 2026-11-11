@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Projects\RunController;
+use App\Http\Controllers\Projects\TicketController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
@@ -44,6 +45,14 @@ Route::prefix('{current_team}')
             Route::get('projects/{project}/runs/{run}', [RunController::class, 'show'])->name('projects.runs.show');
             Route::get('projects/{project}/runs/{run}/events', [RunController::class, 'events'])->name('projects.runs.events');
             Route::post('projects/{project}/runs/{run}/cancel', [RunController::class, 'cancel'])->name('projects.runs.cancel');
+
+            Route::post('projects/{project}/tickets', [TicketController::class, 'store'])->name('projects.tickets.store');
+            Route::patch('projects/{project}/tickets/{ticket}', [TicketController::class, 'update'])->name('projects.tickets.update');
+            Route::delete('projects/{project}/tickets/{ticket}', [TicketController::class, 'destroy'])->name('projects.tickets.destroy');
+            Route::post('projects/{project}/tickets/{ticket}/move', [TicketController::class, 'move'])->name('projects.tickets.move');
+            Route::post('projects/{project}/tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('projects.tickets.reply');
+            Route::post('projects/{project}/tickets/{ticket}/retry', [TicketController::class, 'retry'])->name('projects.tickets.retry');
+            Route::post('projects/{project}/tickets/{ticket}/cancel', [TicketController::class, 'cancel'])->name('projects.tickets.cancel');
         });
     });
 

@@ -8,7 +8,15 @@ export type RunStatus =
 
 export type RunSummary = {
     id: number;
-    type: 'setup_speckit' | 'constitution';
+    type:
+        | 'setup_speckit'
+        | 'constitution'
+        | 'specify'
+        | 'clarify'
+        | 'plan'
+        | 'tasks'
+        | 'analyze'
+        | 'implement';
     type_label: string;
     status: RunStatus;
     status_label: string;
@@ -27,6 +35,8 @@ export type RunSummary = {
     cost_usd: number;
     num_turns: number | null;
     error: string | null;
+    ticket_id: number | null;
+    is_reply: boolean;
     triggered_by: string | null;
     created_at: string | null;
     started_at: string | null;

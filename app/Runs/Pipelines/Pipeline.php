@@ -21,6 +21,15 @@ use App\Services\Providers\ProviderRegistry;
  */
 abstract class Pipeline
 {
+    /**
+     * Added to Claude Code's system prompt for every run.
+     */
+    public const UNATTENDED_PROMPT = 'You are running unattended inside Software Factory. Nobody can answer you during this run. '
+        .'If you need decisions or information from a person, ask all your questions in your final message as a numbered list, then stop; '
+        .'their answers will arrive in a follow-up message. '
+        .'Do not run git commit, git push, git checkout or git switch: Software Factory commits and pushes your changes after you finish. '
+        .'End with a short summary of what you did.';
+
     public function __construct(
         protected WorkspaceManager $workspaces,
         protected GitClient $git,
@@ -45,9 +54,11 @@ abstract class Pipeline
     }
 
     /**
-     * Check out a fresh branch for this run. Returns the worktree path.
+     * Check out a branch for this run. Returns the worktree path.
+     *
+     * By default the branch starts fresh from the base branch; pass $startBranch to continue an existing branch.
      */
-    protected function checkout(Run $run, RunRecorder $log, string $branch): string
+    protected function checkout(Run $run, RunRecorder $log, string $branch, ?string $startBranch = null, ?string $worktreeName = null): string
     {
         $project = $run->project;
         $base = $run->base_branch ?: $project->default_branch;
@@ -59,9 +70,9 @@ abstract class Pipeline
         return $this->workspaces->createWorktree(
             $project,
             $this->gitCredential($project),
-            $run,
+            $worktreeName ?? "run-{$run->id}",
             $branch,
-            $base,
+            $startBranch ?? $base,
             fn (string $message) => $log->output($message),
         );
     }
@@ -69,8 +80,17 @@ abstract class Pipeline
     /**
      * Run Claude Code with a prompt (usually a Spec Kit command) in the worktree.
      */
-    protected function runAgent(Run $run, RunRecorder $log, string $worktree, string $prompt): void
-    {
+    /**
+     * @param  array<string, string>  $environment
+     */
+    protected function runAgent(
+        Run $run,
+        RunRecorder $log,
+        string $worktree,
+        string $prompt,
+        array $environment = [],
+        ?string $resumeSessionId = null,
+    ): void {
         $project = $run->project;
         $budget = config('factory.runner.max_budget_usd');
 
@@ -84,6 +104,9 @@ abstract class Pipeline
                 configDirectory: $this->workspaces->claudeConfigPath($project),
                 timeoutSeconds: (int) config('factory.runner.timeout'),
                 maxBudgetUsd: is_numeric($budget) ? (float) $budget : null,
+                resumeSessionId: $resumeSessionId,
+                environment: $environment,
+                appendSystemPrompt: self::UNATTENDED_PROMPT,
             ),
             onEvent: fn (string $kind, ?string $title, ?string $body) => $log->record($kind, $title, $body),
             shouldCancel: fn () => $run->cancelRequested(),
@@ -98,6 +121,7 @@ abstract class Pipeline
             'cache_read_tokens' => $run->cache_read_tokens + $result->cacheReadTokens,
             'cache_write_tokens' => $run->cache_write_tokens + $result->cacheWriteTokens,
             'cost_usd' => (float) $run->cost_usd + $result->costUsd,
+            'result_text' => $result->resultText ?? $run->result_text,
         ])->save();
 
         if ($result->cancelled) {
@@ -148,6 +172,29 @@ abstract class Pipeline
         ])->save();
 
         $log->record('stage', 'Pull request opened', $pullRequest->url);
+    }
+
+    /**
+     * Commit everything and push the branch. Returns the commit SHA, or null when nothing changed.
+     */
+    protected function commitAndPush(Run $run, RunRecorder $log, string $worktree, string $message): ?string
+    {
+        $this->throwIfCancelled($run);
+        $log->stage('Committing and pushing');
+
+        $sha = $this->git->commitAll($worktree, $message);
+
+        if ($sha === null) {
+            $log->output('No file changes to commit.');
+
+            return null;
+        }
+
+        $this->git->push($worktree, (string) $run->branch, $this->gitCredential($run->project));
+        $run->forceFill(['commit_sha' => $sha])->save();
+        $log->output('Committed '.substr($sha, 0, 8)." and pushed {$run->branch}");
+
+        return $sha;
     }
 
     protected function throwIfCancelled(Run $run): void

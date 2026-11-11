@@ -13,6 +13,14 @@ class ProjectPolicy
         return $user->belongsToTeam($project->team);
     }
 
+    /**
+     * Create tickets and move them across the board. Every team member can do this.
+     */
+    public function work(User $user, Project $project): bool
+    {
+        return $user->belongsToTeam($project->team);
+    }
+
     public function update(User $user, Project $project): bool
     {
         return $user->hasTeamPermission($project->team, TeamPermission::ManageProjects);
