@@ -1,0 +1,23 @@
+# /etc/caddy/Caddyfile
+# Caddy gets and renews the HTTPS certificate by itself (Let's Encrypt).
+# Replace the domain, then: sudo systemctl reload caddy
+
+factory.example.com {
+	root * /srv/software-factory/public
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	php_fastcgi unix//run/php/php8.3-fpm.sock
+	file_server
+
+	log {
+		output file /var/log/caddy/software-factory.log
+	}
+}

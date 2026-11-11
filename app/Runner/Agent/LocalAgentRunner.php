@@ -3,6 +3,7 @@
 namespace App\Runner\Agent;
 
 use App\Runner\ProcessEnvironment;
+use App\Runner\ProcessOutcome;
 use App\Runner\StreamingProcess;
 
 /**
@@ -29,15 +30,9 @@ class LocalAgentRunner implements AgentRunner
         $stderr = [];
 
         $outcome = $this->processes->run(
-            command: $this->command($invocation),
+            command: $this->processCommand($invocation),
             cwd: $invocation->workingDirectory,
-            env: ProcessEnvironment::clean([
-                ...$invocation->environment,
-                'ANTHROPIC_API_KEY' => $invocation->apiKey,
-                'CLAUDE_CONFIG_DIR' => $invocation->configDirectory,
-                'DISABLE_AUTOUPDATER' => '1',
-                'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' => '1',
-            ]),
+            env: ProcessEnvironment::clean($this->agentEnvironment($invocation)),
             timeoutSeconds: $invocation->timeoutSeconds,
             onLine: function (string $line, string $stream) use ($parser, $onEvent, &$stderr) {
                 if ($stream === 'err') {
@@ -53,6 +48,8 @@ class LocalAgentRunner implements AgentRunner
             },
             shouldCancel: $shouldCancel,
         );
+
+        $this->afterProcess($outcome);
 
         $result = $parser->result ?? [];
         $usage = is_array($result['usage'] ?? null) ? $result['usage'] : [];
@@ -76,12 +73,50 @@ class LocalAgentRunner implements AgentRunner
     }
 
     /**
+     * What is started: Claude Code itself here; drivers can wrap it (e.g. in `docker run`).
+     *
+     * @return array<int, string>
+     */
+    protected function processCommand(AgentInvocation $invocation): array
+    {
+        return $this->command($invocation);
+    }
+
+    /**
+     * Variables Claude Code needs. Everything else from the app's environment is removed.
+     *
+     * @return array<string, string>
+     */
+    public function agentEnvironment(AgentInvocation $invocation): array
+    {
+        return [
+            ...$invocation->environment,
+            'ANTHROPIC_API_KEY' => $invocation->apiKey,
+            'CLAUDE_CONFIG_DIR' => $invocation->configDirectory,
+            'DISABLE_AUTOUPDATER' => '1',
+            'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' => '1',
+        ];
+    }
+
+    protected function claudeBinary(): string
+    {
+        return (string) config('factory.runner.binaries.claude');
+    }
+
+    protected function afterProcess(ProcessOutcome $outcome): void
+    {
+        //
+    }
+
+    /**
+     * The Claude Code command line.
+     *
      * @return array<int, string>
      */
     public function command(AgentInvocation $invocation): array
     {
         $command = [
-            (string) config('factory.runner.binaries.claude'),
+            $this->claudeBinary(),
             '-p', $invocation->prompt,
             '--bare',
             '--output-format', 'stream-json',

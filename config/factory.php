@@ -4,6 +4,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Reverse proxies
+    |--------------------------------------------------------------------------
+    |
+    | Addresses of the proxy that terminates HTTPS in front of the app (Caddy,
+    | nginx, a load balancer), comma-separated. Use "*" only behind a proxy
+    | that strips client-sent X-Forwarded-* headers.
+    |
+    */
+
+    'trusted_proxies' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', '127.0.0.1,::1'))))),
+
+    /*
+    |--------------------------------------------------------------------------
     | AI models
     |--------------------------------------------------------------------------
     |
@@ -61,7 +74,7 @@ return [
     | "local" runs Claude Code directly on this machine, inside a dedicated
     | workspace folder with Claude Code's sandbox turned on. "simulated" writes
     | placeholder Spec Kit files instead (no AI, no cost; not in production).
-    | A "docker" driver (one container per run) is planned for servers.
+    | "docker" starts a fresh container per run: the choice for servers.
     |
     */
 
@@ -93,6 +106,16 @@ return [
             'registry.npmjs.org,registry.yarnpkg.com,pypi.org,files.pythonhosted.org,repo.packagist.org,api.github.com,github.com,codeload.github.com,objects.githubusercontent.com',
         )))),
 
+        // FACTORY_RUNNER_DRIVER=docker: one container per agent run (see docker/runner/Dockerfile).
+        'docker' => [
+            'binary' => env('DOCKER_BIN', 'docker'),
+            'image' => env('FACTORY_DOCKER_IMAGE', 'software-factory-runner:latest'),
+            'network' => env('FACTORY_DOCKER_NETWORK', 'bridge'),
+            'memory' => env('FACTORY_DOCKER_MEMORY', '4g'),
+            'cpus' => env('FACTORY_DOCKER_CPUS', '2'),
+            'pids_limit' => (int) env('FACTORY_DOCKER_PIDS_LIMIT', 512),
+        ],
+
         // Commits made by the app use this identity.
         'git_author_name' => env('FACTORY_GIT_AUTHOR_NAME', 'Software Factory'),
         'git_author_email' => env('FACTORY_GIT_AUTHOR_EMAIL', 'software-factory@users.noreply.local'),
@@ -110,6 +133,23 @@ return [
 
         // How often open pull requests are checked when webhooks can't reach this app (minutes).
         'sync_every_minutes' => (int) env('FACTORY_PR_SYNC_MINUTES', 5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backups
+    |--------------------------------------------------------------------------
+    |
+    | `php artisan factory:backup` runs daily. Set FACTORY_BACKUP_DISK to a
+    | filesystem disk (e.g. "s3") to also keep a copy off the server.
+    |
+    */
+
+    'backups' => [
+        'path' => env('FACTORY_BACKUP_PATH') ?: storage_path('app/private/backups'),
+        'keep_days' => (int) env('FACTORY_BACKUP_KEEP_DAYS', 14),
+        'disk' => env('FACTORY_BACKUP_DISK'),
+        'mysqldump_binary' => env('MYSQLDUMP_BIN', 'mysqldump'),
     ],
 
     /*

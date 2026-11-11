@@ -18,13 +18,17 @@ class RunnerHealth
      */
     public function checks(): array
     {
-        return Cache::remember('runner-health', now()->addSeconds(30), fn () => [
+        return Cache::remember('runner-health', now()->addSeconds(30), fn () => array_values(array_filter([
             $this->binary('git', 'git', 'Install git.'),
-            $this->binary('claude', 'Claude Code', 'Install Claude Code, or set CLAUDE_BIN in .env to its full path.'),
+            match (config('factory.runner.driver')) {
+                'docker' => $this->docker(),
+                'simulated' => null,
+                default => $this->binary('claude', 'Claude Code', 'Install Claude Code, or set CLAUDE_BIN in .env to its full path.'),
+            },
             $this->speckit(),
             $this->workspace(),
             $this->queue(),
-        ]);
+        ])));
     }
 
     /**
@@ -50,6 +54,33 @@ class RunnerHealth
         return $version === null
             ? $this->check($key, $label, false, "Not found. {$fix}")
             : $this->check($key, $label, true, $version);
+    }
+
+    /**
+     * @return array{key: string, label: string, ok: bool, detail: string}
+     */
+    private function docker(): array
+    {
+        $binary = (string) config('factory.runner.docker.binary', 'docker');
+        $image = (string) config('factory.runner.docker.image');
+
+        try {
+            $server = Process::env(ProcessEnvironment::clean())->timeout(15)->run([$binary, 'version', '--format', '{{.Server.Version}}']);
+        } catch (Throwable) {
+            return $this->check('docker', 'Docker', false, 'Docker is not installed (or DOCKER_BIN is wrong).');
+        }
+
+        if ($server->failed()) {
+            return $this->check('docker', 'Docker', false, 'Docker is installed but the app can’t reach the Docker daemon. Is it running, and is the app’s user in the "docker" group?');
+        }
+
+        $inspect = Process::env(ProcessEnvironment::clean())->timeout(15)->run([$binary, 'image', 'inspect', '--format', '{{.Id}}', $image]);
+
+        if ($inspect->failed()) {
+            return $this->check('docker', 'Docker runner image', false, "Image {$image} not found. Build it with: docker build -t {$image} docker/runner");
+        }
+
+        return $this->check('docker', 'Docker runner image', true, 'Docker '.trim($server->output()).", image {$image}");
     }
 
     /**

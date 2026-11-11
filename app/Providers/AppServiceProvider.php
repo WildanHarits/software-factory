@@ -4,13 +4,16 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Runner\Agent\AgentRunner;
+use App\Runner\Agent\DockerAgentRunner;
 use App\Runner\Agent\LocalAgentRunner;
 use App\Runner\Agent\SimulatedAgentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\DevCommands;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use InvalidArgumentException;
@@ -24,11 +27,12 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(AgentRunner::class, fn ($app) => match (config('factory.runner.driver')) {
             'local' => $app->make(LocalAgentRunner::class),
+            'docker' => $app->make(DockerAgentRunner::class),
             // Placeholder files instead of AI, for trying the board without an API key.
             'simulated' => $app->isProduction()
                 ? throw new InvalidArgumentException('The simulated runner is not available in production.')
                 : $app->make(SimulatedAgentRunner::class),
-            default => throw new InvalidArgumentException('Unknown runner driver ['.config('factory.runner.driver').']. Use "local".'),
+            default => throw new InvalidArgumentException('Unknown runner driver ['.config('factory.runner.driver').']. Use "local", "docker" or "simulated".'),
         });
     }
 
@@ -71,6 +75,14 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        // Behind a reverse proxy (Caddy, nginx, a load balancer) that terminates HTTPS.
+        TrustProxies::at((array) config('factory.trusted_proxies'));
+
+        // Generate https:// links (webhook URLs, redirects) when the app is served over HTTPS behind a proxy.
+        if (str_starts_with((string) config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),

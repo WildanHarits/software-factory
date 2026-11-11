@@ -5,19 +5,19 @@ A Kanban board tracks each feature through the Spec Kit phases, and an AI agent 
 
 ## Decisions
 
-| Topic          | Decision                                                                         |
-| -------------- | -------------------------------------------------------------------------------- |
-| Framework      | Laravel 13, official React starter kit (teams branch)                            |
-| Frontend       | Inertia + React + TypeScript, shadcn/ui, dnd-kit for the board                   |
-| Database       | MySQL                                                                            |
-| Users          | Teams. A user can be in many teams. Roles: owner / admin / member                |
-| Sign-up        | None. Super admins create accounts; team owners/admins invite existing users     |
-| Tokens         | GitHub, GitLab and Anthropic tokens, at team level plus optional personal tokens |
-| Phases         | Each ticket chooses manual approval or auto; default is manual approval          |
-| Model / effort | Default per project, override per ticket (and optionally per phase)              |
-| Git            | Commit after each phase, open PR/MR automatically, merge policy per project      |
-| Hosting        | Local Mac first (no Docker), server later                                        |
-| Spec Kit       | v1.4.0, Claude integration. Commands are skills: `/speckit-specify` etc.         |
+| Topic          | Decision                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| Framework      | Laravel 13, official React starter kit (teams branch)                                          |
+| Frontend       | Inertia + React + TypeScript, shadcn/ui, dnd-kit for the board                                 |
+| Database       | MySQL                                                                                          |
+| Users          | Teams. A user can be in many teams. Roles: owner / admin / member                              |
+| Sign-up        | None. Super admins create accounts; team owners/admins invite existing users                   |
+| Tokens         | GitHub, GitLab and Anthropic tokens, at team level plus optional personal tokens               |
+| Phases         | Each ticket chooses manual approval or auto; default is manual approval                        |
+| Model / effort | Default per project, override per ticket (and optionally per phase)                            |
+| Git            | Commit after each phase, open PR/MR automatically, merge policy per project                    |
+| Hosting        | Local Mac (local runner) for development; a server with the Docker runner (see docs/DEPLOY.md) |
+| Spec Kit       | v1.4.0, Claude integration. Commands are skills: `/speckit-specify` etc.                       |
 
 ## How a run works (built in Phase 3)
 
@@ -34,7 +34,11 @@ A Kanban board tracks each feature through the Spec Kit phases, and an AI agent 
 6. Cost, tokens, turns and the Claude session id are saved on the run. Cancel stops the agent within ~2 seconds.
 7. The run page polls for new log lines every 1.5 s while the run is active.
 
-Drivers (`FACTORY_RUNNER_DRIVER`): `local` runs Claude Code; `simulated` writes placeholder Spec Kit files with no AI and no cost, for trying the board (refused in production); a `docker` driver (one container per run) comes with server readiness.
+Drivers (`FACTORY_RUNNER_DRIVER`):
+
+- `local`: Claude Code on this machine, inside its own sandbox (development, single-user machines).
+- `docker`: a fresh container per run from `docker/runner/Dockerfile` (servers). It mounts only the worktree and the project's Claude config folder at their host paths, runs as the app's user with no capabilities, no privilege escalation, memory/CPU/process limits and a private `/tmp`, and receives secrets by name only. Claude Code's own sandbox is off there; the container is the sandbox. Cancelled or timed-out containers are force-removed.
+- `simulated`: placeholder Spec Kit files with no AI and no cost, for trying the board (refused in production).
 
 ## How the board works (built in Phase 4)
 
@@ -109,7 +113,23 @@ Columns: Backlog → Specify → Clarify → Plan → Tasks → Analyze → Impl
     - Webhooks (GitHub signature / GitLab token) and a 5-minute background sync move merged features to Done
     - Review actions: update PR, reply to the agent to change the implementation, mark Done
     - Not done: deleting merged branches on GitHub (turn on "Automatically delete head branches" in the repo; GitLab MRs already remove them), `/speckit-converge`
-6. **Server readiness** — Docker runner driver, production config, HTTPS, backups, cleanup of stuck runs and old worktrees
+6. **Server readiness** ✅
+    - `docker` runner driver and runner image (`docker/runner/Dockerfile`, Claude Code pinned)
+    - Production config: trusted proxies (`TRUSTED_PROXIES`), https links when `APP_URL` is https, secure/encrypted sessions in `deploy/env.production.example`
+    - Server files in `deploy/`: Caddyfile (automatic HTTPS, security headers), supervisor config for Horizon, crontab, `deploy.sh`
+    - `factory:recover-runs` (every 5 min): runs whose worker died are failed so cards can be retried
+    - `factory:prune-workspaces` (daily): leftover worktrees and folders of deleted projects
+    - `factory:backup` (daily): compressed MySQL/SQLite dump, 14-day retention, optional copy to a filesystem disk (S3); works with the app's own MySQL user on MySQL 8/9 and MariaDB
+    - `factory:doctor`: checks runner, Horizon, scheduler (heartbeat), HTTPS, cookies, mail and backups; run by `deploy.sh`
+    - Step-by-step server guide: `docs/DEPLOY.md`
+
+## Ideas for later
+
+- `/speckit-converge` and `/speckit-checklist` as optional board actions
+- Live updates over Reverb instead of polling
+- Per-project runner images (different toolchains per repository)
+- An egress proxy for runner containers by default
+- Activity log (who moved what, approved which phase)
 
 ## Local setup
 
@@ -133,5 +153,5 @@ For local test data instead: `php artisan migrate:fresh --seed` (logins are list
 
 - Spec Kit command names differ by version (v1.4: `/speckit-specify`; older: `/speckit.specify` or `/specify`). They live in `config/factory.php`; update them together with the CLI version.
 - Upgrading Spec Kit: install the new CLI version, then set `SPECKIT_VERSION` and check the command names.
-- A run that's killed hard (e.g. the machine sleeps) can stay "Running"; a cleanup for stuck runs is still to do.
+- Runs killed hard (machine asleep, worker crash) are failed by `factory:recover-runs` after the time limit plus 15 minutes.
 - Webhooks need a public URL: a tunnel (Cloudflare Tunnel / ngrok) while running on the Mac.
