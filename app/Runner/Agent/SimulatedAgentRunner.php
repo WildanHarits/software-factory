@@ -28,6 +28,7 @@ class SimulatedAgentRunner implements AgentRunner
         }
 
         $message = match (true) {
+            str_contains($prompt, 'Git stopped on conflicts in:') => $this->resolveConflicts($invocation->workingDirectory, $prompt),
             $command === null => $this->reply($dir, $prompt),
             str_ends_with($command, 'specify') => $this->write($dir, 'spec.md', "# Feature specification\n\n".trim(substr($prompt, strlen($command)))."\n\n## User scenarios\n\n1. A person can use the feature.\n\n## Requirements\n\n- **FR-001**: The system must do what was described.\n", 'Wrote spec.md.'),
             str_ends_with($command, 'clarify') => "I have two questions before planning:\n\n1. Who can use this feature: everyone or only signed-in people?\n2. Is there a limit on how many items a person can create?",
@@ -77,6 +78,24 @@ class SimulatedAgentRunner implements AgentRunner
         }
 
         return 'Noted.';
+    }
+
+    /**
+     * Keep both sides of every conflict (good enough to exercise the merge flow).
+     */
+    private function resolveConflicts(string $root, string $prompt): string
+    {
+        preg_match_all('/^- (.+)$/m', $prompt, $matches);
+
+        foreach ($matches[1] as $file) {
+            $path = rtrim($root, '/').'/'.trim($file);
+
+            if (is_file($path)) {
+                File::put($path, (string) preg_replace('/^(<{7}|={7}|>{7}).*\R/m', '', (string) File::get($path)));
+            }
+        }
+
+        return 'Resolved conflicts in '.implode(', ', $matches[1]).' by keeping both sides (simulated).';
     }
 
     private function implement(string $root, ?string $dir): string

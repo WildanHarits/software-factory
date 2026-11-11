@@ -15,11 +15,15 @@ enum RunType: string
     case Analyze = 'analyze';
     case Implement = 'implement';
 
+    // Merge the latest base branch into the feature branch, push, and open the pull request.
+    case Publish = 'publish';
+
     public function label(): string
     {
         return match ($this) {
             self::SetupSpecKit => 'Set up Spec Kit',
             self::Constitution => 'Update constitution',
+            self::Publish => 'Open pull request',
             default => ucfirst($this->value),
         };
     }

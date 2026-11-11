@@ -103,7 +103,79 @@ class GitHubHost implements GitHost
             'body' => $body,
         ]), 'open a pull request');
 
-        return new PullRequest(number: (int) $response->json('number'), url: (string) $response->json('html_url'));
+        return $this->toPullRequest($response->json());
+    }
+
+    public function pullRequest(string $fullName, int $number): PullRequest
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->get("/repos/{$fullName}/pulls/{$number}"), 'read the pull request');
+
+        return $this->toPullRequest($response->json());
+    }
+
+    public function mergePullRequest(string $fullName, PullRequest $pullRequest, string $method): void
+    {
+        $this->send(fn (PendingRequest $http) => $http->put("/repos/{$fullName}/pulls/{$pullRequest->number}/merge", [
+            'merge_method' => $method,
+        ]), 'merge the pull request');
+    }
+
+    public function enableAutoMerge(string $fullName, PullRequest $pullRequest, string $method): void
+    {
+        $nodeId = $pullRequest->nodeId ?? $this->pullRequest($fullName, $pullRequest->number)->nodeId;
+
+        // Auto-merge only exists in GitHub's GraphQL API.
+        $response = $this->send(fn (PendingRequest $http) => $http->post($this->graphqlUrl(), [
+            'query' => 'mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { number } } }',
+            'variables' => ['id' => $nodeId, 'method' => strtoupper($method)],
+        ]), 'turn on auto-merge');
+
+        $errors = $response->json('errors');
+
+        if (is_array($errors) && $errors !== []) {
+            $message = collect($errors)->pluck('message')->filter()->implode(' ');
+
+            throw new ProviderException("GitHub couldn't turn on auto-merge. GitHub said: {$message} (Auto-merge must be allowed in the repository settings, and the branch needs required checks.)");
+        }
+    }
+
+    public function registerWebhook(string $fullName, string $url, string $secret): string
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->post("/repos/{$fullName}/hooks", [
+            'name' => 'web',
+            'active' => true,
+            'events' => ['pull_request'],
+            'config' => ['url' => $url, 'content_type' => 'json', 'secret' => $secret, 'insecure_ssl' => '0'],
+        ]), 'add a webhook');
+
+        return (string) $response->json('id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function toPullRequest(array $data): PullRequest
+    {
+        $state = match (true) {
+            ! empty($data['merged']) || ! empty($data['merged_at']) => PullRequest::MERGED,
+            ($data['state'] ?? 'open') === 'closed' => PullRequest::CLOSED,
+            default => PullRequest::OPEN,
+        };
+
+        return new PullRequest(
+            number: (int) $data['number'],
+            url: (string) $data['html_url'],
+            state: $state,
+            nodeId: isset($data['node_id']) ? (string) $data['node_id'] : null,
+        );
+    }
+
+    private function graphqlUrl(): string
+    {
+        $base = rtrim((string) config('factory.github_api_url'), '/');
+
+        // GitHub Enterprise: https://host/api/v3 -> https://host/api/graphql
+        return str_ends_with($base, '/api/v3') ? substr($base, 0, -3).'graphql' : "{$base}/graphql";
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ApprovalMode;
+use App\Enums\PullRequestState;
 use App\Enums\RunStatus;
 use App\Enums\TicketStage;
 use App\Enums\TicketStatus;
@@ -27,6 +28,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $feature_number
  * @property string|null $branch
  * @property string|null $feature_dir
+ * @property int|null $pull_request_number
+ * @property string|null $pull_request_url
+ * @property PullRequestState|null $pull_request_state
+ * @property Carbon|null $merged_at
  * @property string $model
  * @property string $effort
  * @property ApprovalMode $approval_mode
@@ -143,6 +148,9 @@ class Ticket extends Model
             'effort' => $this->effort,
             'approval_mode' => $this->approval_mode->value,
             'cost_usd' => round((float) ($this->runs_sum_cost_usd ?? 0), 4),
+            'pull_request_number' => $this->pull_request_number,
+            'pull_request_url' => $this->pull_request_url,
+            'pull_request_state' => $this->pull_request_state?->value,
             'updated_at' => $this->updated_at?->toISOString(),
         ];
     }
@@ -165,7 +173,11 @@ class Ticket extends Model
             'skip_analyze' => $this->skip_analyze,
             'next_stage' => $next?->value,
             'next_stage_label' => $next?->label(),
-            'can_reply' => $this->session_id !== null && $this->stage->isPhase(),
+            // In Review, a reply goes to the Implement session and updates the pull request.
+            'can_reply' => $this->session_id !== null && ($this->stage->isPhase() || $this->stage === TicketStage::Review),
+            'pull_request_state_label' => $this->pull_request_state?->label(),
+            'merged_at' => $this->merged_at?->toISOString(),
+            'merge_policy_label' => $this->project->merge_policy->label(),
             'created_by' => $this->creator?->name,
             'created_at' => $this->created_at?->toISOString(),
             'last_run' => $this->lastRun?->toSummary(),
@@ -192,6 +204,8 @@ class Ticket extends Model
             'approval_mode' => ApprovalMode::class,
             'skip_clarify' => 'boolean',
             'skip_analyze' => 'boolean',
+            'pull_request_state' => PullRequestState::class,
+            'merged_at' => 'datetime',
         ];
     }
 }

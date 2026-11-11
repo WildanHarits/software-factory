@@ -16,7 +16,8 @@ export type RunSummary = {
         | 'plan'
         | 'tasks'
         | 'analyze'
-        | 'implement';
+        | 'implement'
+        | 'publish';
     type_label: string;
     status: RunStatus;
     status_label: string;

@@ -39,6 +39,7 @@ Route::prefix('{current_team}')
             Route::patch('projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
             Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
             Route::post('projects/{project}/refresh', [ProjectController::class, 'refresh'])->middleware('throttle:20,1')->name('projects.refresh');
+            Route::post('projects/{project}/webhook', [ProjectController::class, 'registerWebhook'])->middleware('throttle:10,1')->name('projects.webhook');
 
             Route::post('projects/{project}/runs/setup', [RunController::class, 'setup'])->name('projects.runs.setup');
             Route::post('projects/{project}/runs/constitution', [RunController::class, 'constitution'])->name('projects.runs.constitution');
@@ -53,6 +54,7 @@ Route::prefix('{current_team}')
             Route::post('projects/{project}/tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('projects.tickets.reply');
             Route::post('projects/{project}/tickets/{ticket}/retry', [TicketController::class, 'retry'])->name('projects.tickets.retry');
             Route::post('projects/{project}/tickets/{ticket}/cancel', [TicketController::class, 'cancel'])->name('projects.tickets.cancel');
+            Route::post('projects/{project}/tickets/{ticket}/publish', [TicketController::class, 'publish'])->name('projects.tickets.publish');
         });
     });
 

@@ -43,7 +43,8 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * `composer run dev` runs Horizon instead of a plain queue worker, so agent runs on the "runs" queue are picked up too.
+     * `composer run dev` runs Horizon instead of a plain queue worker (so agent runs on the "runs" queue are
+     * picked up), plus the scheduler (for the pull request sync).
      */
     protected function configureDevCommands(): void
     {
@@ -53,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
 
         DevCommands::except('queue');
         DevCommands::artisan('horizon', 'horizon');
+        DevCommands::artisan('schedule:work', 'schedule');
     }
 
     /**

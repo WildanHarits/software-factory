@@ -181,13 +181,21 @@ class TicketWorkflowTest extends TestCase
         $this->moveTo($failed, 'clarify')->assertSessionHasErrors(['ticket' => 'Finish Specify first.']);
     }
 
-    public function test_after_implement_cards_go_to_review_then_done()
+    public function test_moving_to_review_opens_the_pull_request_and_done_can_be_set_by_hand()
     {
         $ticket = $this->awaiting(TicketStage::Implement);
 
         $this->moveTo($ticket, 'done')->assertSessionHasErrors('ticket');
         $this->moveTo($ticket, 'review')->assertSessionHasNoErrors();
-        $this->assertSame(TicketStage::Review, $ticket->fresh()->stage);
+
+        $ticket->refresh();
+        $this->assertSame(TicketStage::Review, $ticket->stage);
+        $this->assertSame(TicketStatus::Running, $ticket->status);
+        $this->assertSame(RunType::Publish, $ticket->lastRun->type);
+
+        // The publish run finished: the card waits in Review.
+        $ticket->lastRun->forceFill(['status' => RunStatus::Succeeded])->save();
+        app(TicketWorkflow::class)->afterRun($ticket->lastRun);
         $this->assertSame(TicketStatus::Idle, $ticket->fresh()->status);
 
         $this->moveTo($ticket, 'done')->assertSessionHasNoErrors();
@@ -195,8 +203,6 @@ class TicketWorkflowTest extends TestCase
 
         $this->moveTo($ticket, 'review')->assertSessionHasNoErrors();
         $this->assertSame(TicketStage::Review, $ticket->fresh()->stage);
-
-        Queue::assertNothingPushed();
     }
 
     public function test_analyze_is_skipped_when_moving_from_tasks_to_implement()

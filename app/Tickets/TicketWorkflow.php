@@ -4,6 +4,7 @@ namespace App\Tickets;
 
 use App\Enums\ApprovalMode;
 use App\Enums\RunStatus;
+use App\Enums\RunType;
 use App\Enums\TicketStage;
 use App\Enums\TicketStatus;
 use App\Jobs\ExecuteRun;
@@ -20,7 +21,8 @@ use Illuminate\Validation\ValidationException;
  * - Cards move forward one phase at a time. Clarify and Analyze can be skipped by moving past them.
  * - Moving into a phase column starts that phase's run.
  * - A phase must be finished ("Ready for review") before the card can move on.
- * - After Implement the card goes to Review, then Done.
+ * - Moving from Implement to Review merges the latest base branch, pushes and opens the pull request.
+ * - A merged pull request moves the card to Done (webhook or background sync); people can also move it.
  * - In auto mode the next phase starts by itself, except after Clarify, which needs a person's answers.
  */
 class TicketWorkflow
@@ -65,7 +67,7 @@ class TicketWorkflow
             $this->fail("#{$ticket->number} is already in {$target->label()}.");
         }
 
-        // Review and Done can be swapped freely: merging happens outside the app for now.
+        // People can mark a feature Done themselves (e.g. merged outside the app, or no webhook), and undo it.
         if ($from === TicketStage::Review && $target === TicketStage::Done
             || $from === TicketStage::Done && $target === TicketStage::Review) {
             $ticket->forceFill(['stage' => $target, 'status' => TicketStatus::Idle])->save();
@@ -100,7 +102,7 @@ class TicketWorkflow
             $skipped[] = $stage;
         }
 
-        if ($target->isPhase()) {
+        if ($target->isPhase() || $target === TicketStage::Review) {
             $this->ensureProjectCanRun($ticket->project);
         }
 
@@ -111,8 +113,12 @@ class TicketWorkflow
             'skip_analyze' => $ticket->skip_analyze || in_array(TicketStage::Analyze, $skipped, true),
         ])->save();
 
+        if ($target === TicketStage::Review) {
+            return $this->queue($ticket, RunType::Publish, $user, []);
+        }
+
         return $target->isPhase()
-            ? $this->queue($ticket, $target, $user, $notes !== '' ? ['notes' => $notes] : [])
+            ? $this->queue($ticket, $target->runType(), $user, $notes !== '' ? ['notes' => $notes] : [])
             : null;
     }
 
@@ -133,13 +139,16 @@ class TicketWorkflow
     {
         $this->ensureIdle($ticket);
 
-        if (! $ticket->stage->isPhase() || ! $ticket->session_id) {
+        $inReview = $ticket->stage === TicketStage::Review;
+
+        if ((! $ticket->stage->isPhase() && ! $inReview) || ! $ticket->session_id) {
             $this->fail('There is no agent session to reply to.');
         }
 
         $this->ensureProjectCanRun($ticket->project);
 
-        return $this->queue($ticket, $ticket->stage, $user, ['reply' => $message]);
+        // In Review, changes go to the Implement session; pushing them updates the pull request.
+        return $this->queue($ticket, $inReview ? RunType::Implement : $ticket->stage->runType(), $user, ['reply' => $message]);
     }
 
     /**
@@ -149,13 +158,33 @@ class TicketWorkflow
     {
         $this->ensureIdle($ticket);
 
+        if ($ticket->stage === TicketStage::Review) {
+            return $this->publish($ticket, $user);
+        }
+
         if (! $ticket->stage->isPhase()) {
             $this->fail('Only phases can be run again.');
         }
 
         $this->ensureProjectCanRun($ticket->project);
 
-        return $this->queue($ticket, $ticket->stage, $user, []);
+        return $this->queue($ticket, $ticket->stage->runType(), $user, []);
+    }
+
+    /**
+     * Merge the latest base branch into the feature again, push, and open or refresh the pull request.
+     */
+    public function publish(Ticket $ticket, User $user): Run
+    {
+        $this->ensureIdle($ticket);
+
+        if ($ticket->stage !== TicketStage::Review) {
+            $this->fail('Pull requests are opened from Review.');
+        }
+
+        $this->ensureProjectCanRun($ticket->project);
+
+        return $this->queue($ticket, RunType::Publish, $user, []);
     }
 
     public function cancel(Ticket $ticket): void
@@ -180,10 +209,15 @@ class TicketWorkflow
             return;
         }
 
+        // In Review the card simply waits for the merge; there is no next phase to approve.
         $ticket->forceFill([
-            'status' => TicketStatus::AwaitingApproval,
-            'session_id' => $run->session_id ?? $ticket->session_id,
+            'status' => $ticket->stage->isPhase() ? TicketStatus::AwaitingApproval : TicketStatus::Idle,
+            'session_id' => $run->type === RunType::Publish ? $ticket->session_id : ($run->session_id ?? $ticket->session_id),
         ])->save();
+
+        if (! $ticket->stage->isPhase()) {
+            return;
+        }
 
         $replied = ! empty($run->input['reply']);
 
@@ -199,15 +233,15 @@ class TicketWorkflow
     /**
      * @param  array<string, mixed>  $input
      */
-    private function queue(Ticket $ticket, TicketStage $stage, ?User $user, array $input): Run
+    private function queue(Ticket $ticket, RunType $type, ?User $user, array $input): Run
     {
         $project = $ticket->project;
 
-        $run = DB::transaction(function () use ($ticket, $stage, $user, $input, $project) {
+        $run = DB::transaction(function () use ($ticket, $type, $user, $input, $project) {
             $run = $project->runs()->create([
                 'team_id' => $project->team_id,
                 'ticket_id' => $ticket->id,
-                'type' => $stage->runType(),
+                'type' => $type,
                 'status' => RunStatus::Queued,
                 'input' => $input,
                 'model' => $ticket->model,

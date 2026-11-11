@@ -104,7 +104,7 @@ class GitLabHost implements GitHost
 
     public function createPullRequest(string $fullName, string $head, string $base, string $title, string $body): PullRequest
     {
-        $response = $this->send(fn (PendingRequest $http) => $http->post('projects/'.rawurlencode($fullName).'/merge_requests', [
+        $response = $this->send(fn (PendingRequest $http) => $http->post($this->project($fullName).'/merge_requests', [
             'source_branch' => $head,
             'target_branch' => $base,
             'title' => $title,
@@ -112,7 +112,67 @@ class GitLabHost implements GitHost
             'remove_source_branch' => true,
         ]), 'open a merge request');
 
-        return new PullRequest(number: (int) $response->json('iid'), url: (string) $response->json('web_url'));
+        return $this->toPullRequest($response->json());
+    }
+
+    public function pullRequest(string $fullName, int $number): PullRequest
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->get($this->project($fullName)."/merge_requests/{$number}"), 'read the merge request');
+
+        return $this->toPullRequest($response->json());
+    }
+
+    public function mergePullRequest(string $fullName, PullRequest $pullRequest, string $method): void
+    {
+        $this->send(fn (PendingRequest $http) => $http->put($this->project($fullName)."/merge_requests/{$pullRequest->number}/merge", [
+            'squash' => $method === 'squash',
+            'should_remove_source_branch' => true,
+        ]), 'merge the merge request');
+    }
+
+    public function enableAutoMerge(string $fullName, PullRequest $pullRequest, string $method): void
+    {
+        $this->send(fn (PendingRequest $http) => $http->put($this->project($fullName)."/merge_requests/{$pullRequest->number}/merge", [
+            'squash' => $method === 'squash',
+            'should_remove_source_branch' => true,
+            // Older GitLab versions use the first name, newer ones the second.
+            'merge_when_pipeline_succeeds' => true,
+            'auto_merge' => true,
+        ]), 'turn on "merge when pipeline succeeds"');
+    }
+
+    public function registerWebhook(string $fullName, string $url, string $secret): string
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->post($this->project($fullName).'/hooks', [
+            'url' => $url,
+            'token' => $secret,
+            'merge_requests_events' => true,
+            'push_events' => false,
+            'enable_ssl_verification' => true,
+        ]), 'add a webhook');
+
+        return (string) $response->json('id');
+    }
+
+    private function project(string $fullName): string
+    {
+        return 'projects/'.rawurlencode($fullName);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function toPullRequest(array $data): PullRequest
+    {
+        return new PullRequest(
+            number: (int) $data['iid'],
+            url: (string) $data['web_url'],
+            state: match ($data['state'] ?? 'opened') {
+                'merged' => PullRequest::MERGED,
+                'closed' => PullRequest::CLOSED,
+                default => PullRequest::OPEN,
+            },
+        );
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Enums\CredentialProvider;
 use App\Enums\MergePolicy;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,6 +37,9 @@ use Illuminate\Support\Str;
  * @property MergePolicy $merge_policy
  * @property bool $speckit_initialized
  * @property Carbon|null $speckit_checked_at
+ * @property string|null $webhook_secret
+ * @property string|null $webhook_id
+ * @property Carbon|null $webhook_last_received_at
  * @property int|null $created_by
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -52,6 +56,7 @@ use Illuminate\Support\Str;
     'default_model', 'default_effort', 'approval_mode', 'merge_policy',
     'speckit_initialized', 'speckit_checked_at', 'created_by',
 ])]
+#[Hidden(['webhook_secret'])]
 class Project extends Model
 {
     /** @use HasFactory<ProjectFactory> */
@@ -172,6 +177,16 @@ class Project extends Model
         return $this->hasMany(Ticket::class);
     }
 
+    /**
+     * A link to a file on a branch, on GitHub or GitLab.
+     */
+    public function fileUrl(string $branch, string $path): string
+    {
+        $separator = $this->provider === CredentialProvider::GitLab ? '/-/blob/' : '/blob/';
+
+        return rtrim($this->repo_web_url, '/').$separator.$branch.'/'.ltrim($path, '/');
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';
@@ -189,6 +204,8 @@ class Project extends Model
             'repo_private' => 'boolean',
             'speckit_initialized' => 'boolean',
             'speckit_checked_at' => 'datetime',
+            'webhook_secret' => 'encrypted',
+            'webhook_last_received_at' => 'datetime',
         ];
     }
 }

@@ -48,8 +48,20 @@ Columns: Backlog → Specify → Clarify → Plan → Tasks → Analyze → Impl
 - First Specify run: the app picks a feature number above every `specs/NNN-*` on the base branch and every other ticket of the project, so parallel features never collide. Branch `NNN-short-title`, folder `specs/NNN-short-title`.
 - Every run: checks out the ticket's branch in `worktrees/ticket-{id}` (a stable folder, which Claude needs to resume sessions), passes `SPECIFY_FEATURE` and `SPECIFY_FEATURE_DIRECTORY`, commits "Phase: Title (#n)", pushes, and copies the feature folder's files (spec.md, plan.md, tasks.md, …) into the database for the ticket panel.
 - The agent is told it runs unattended: ask questions in its final message, don't commit or switch branches.
-- After Implement the card goes to Review, then Done (both moved by hand until Phase 5 adds PRs and webhooks).
 - Every team member can create and move cards; project settings and Spec Kit setup stay with owners and admins.
+
+## Pull requests (built in Phase 5)
+
+- Moving a card from Implement to Review starts a publish run:
+    1. Merge the latest base branch into the feature branch (a merge commit, never a force-push).
+    2. On conflicts, the agent resolves them. If any conflict markers remain, the merge is undone and the run fails, asking a person to resolve them in the branch.
+    3. Push, then open the pull/merge request (title "Feature (#n)", description with links to spec / plan / tasks and task progress), or reuse the open one.
+    4. Apply the project's merge policy: wait for a person; auto-merge when checks pass (GitHub auto-merge via GraphQL; GitLab "merge when pipeline succeeds"); or merge immediately. Merge method: `FACTORY_MERGE_METHOD` (squash by default). If the provider refuses auto-merge or merging, the run still succeeds and the PR stays open, with the reason in the log.
+- In Review: "Update pull request" repeats the publish run; replying sends changes to the Implement session, and the push updates the PR; "Mark as Done" moves the card by hand.
+- A merged PR moves the card to Done:
+    - Webhooks: `POST /webhooks/github/{project id}` (checked with an HMAC signature) and `/webhooks/gitlab/{project id}` (checked with the secret token). Each project has its own secret. Project settings show the URL and secret, and can add the webhook on GitHub/GitLab (needs a public `APP_URL`; local addresses are refused).
+    - Background sync: `factory:sync-pull-requests` checks open PRs every `FACTORY_PR_SYNC_MINUTES` (5). `composer run dev` runs the scheduler.
+- A PR closed without merging leaves the card in Review, marked "Closed without merging".
 
 ## Data model
 
@@ -61,6 +73,7 @@ Columns: Backlog → Specify → Clarify → Plan → Tasks → Analyze → Impl
 - `tickets` — number, title, description, stage, status, feature number / branch / folder, model, effort, approval mode, skip flags, Claude session id — **Phase 4**
 - `ticket_documents` — copies of the feature folder's files — **Phase 4**
 - `runs.ticket_id`, `runs.result_text` (the agent's final message) — **Phase 4**
+- `tickets.pull_request_*`, `merged_at`; `projects.webhook_secret` (encrypted), `webhook_id`, `webhook_last_received_at` — **Phase 5**
 - `activity_log` — later
 
 ## Phases
@@ -90,8 +103,13 @@ Columns: Backlog → Specify → Clarify → Plan → Tasks → Analyze → Impl
     - Ticket panel: start / approve with notes / reply / retry / cancel, the agent's last message (questions, report, summary), rendered documents, run history, settings, delete
     - Feature branch and folder per ticket; one commit per phase; session resume for replies (see "How the board works")
     - `simulated` runner driver for trying the board without an API key
-5. **Git automation** — open the PR/MR after Implement, merge policies, webhooks that move cards to Done, rebase and conflict handling, optional `/speckit-converge`
-6. **Server readiness** — Docker runner driver, production config, HTTPS, backups
+5. **Git automation** ✅
+    - Publish run when a card moves to Review: merge base branch, agent resolves conflicts, push, open or reuse the PR/MR
+    - Merge policies: manual, auto-merge when checks pass, merge immediately
+    - Webhooks (GitHub signature / GitLab token) and a 5-minute background sync move merged features to Done
+    - Review actions: update PR, reply to the agent to change the implementation, mark Done
+    - Not done: deleting merged branches on GitHub (turn on "Automatically delete head branches" in the repo; GitLab MRs already remove them), `/speckit-converge`
+6. **Server readiness** — Docker runner driver, production config, HTTPS, backups, cleanup of stuck runs and old worktrees
 
 ## Local setup
 
@@ -103,7 +121,7 @@ composer install && npm install
 cp .env.example .env && php artisan key:generate   # then fill in DB_PASSWORD
 php artisan migrate
 php artisan app:create-super-admin
-composer run dev        # web server, Vite, Horizon, logs
+composer run dev        # web server, Vite, Horizon, scheduler, logs
 ```
 
 Runner settings live in `.env` (`FACTORY_*`, `CLAUDE_BIN`, `SPECIFY_BIN`, `GIT_BIN`) and `config/factory.php`.

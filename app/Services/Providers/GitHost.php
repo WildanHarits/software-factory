@@ -26,4 +26,21 @@ interface GitHost
     public function pathExists(string $fullName, string $path, string $ref): bool;
 
     public function createPullRequest(string $fullName, string $head, string $base, string $title, string $body): PullRequest;
+
+    public function pullRequest(string $fullName, int $number): PullRequest;
+
+    /**
+     * Merge now. $method is "squash", "merge" or "rebase".
+     */
+    public function mergePullRequest(string $fullName, PullRequest $pullRequest, string $method): void;
+
+    /**
+     * Merge automatically once required checks pass (GitHub auto-merge, GitLab "merge when pipeline succeeds").
+     */
+    public function enableAutoMerge(string $fullName, PullRequest $pullRequest, string $method): void;
+
+    /**
+     * Ask the provider to send pull/merge request events to $url. Returns the webhook's id.
+     */
+    public function registerWebhook(string $fullName, string $url, string $secret): string;
 }

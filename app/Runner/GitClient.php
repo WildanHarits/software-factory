@@ -62,14 +62,72 @@ class GitClient
             return null;
         }
 
-        $this->run([
+        $this->run([...self::identity(), 'commit', '--no-verify', '-m', $message], $cwd);
+
+        return $this->run(['rev-parse', 'HEAD'], $cwd);
+    }
+
+    /**
+     * Merge $ref into the current branch. Returns false when git stops on conflicts
+     * (the merge is left in progress so the conflicts can be resolved).
+     */
+    public function merge(string $cwd, string $ref): bool
+    {
+        try {
+            $this->run([...self::identity(), 'merge', '--no-edit', '--no-verify', $ref], $cwd);
+
+            return true;
+        } catch (RunFailed $exception) {
+            if ($this->conflictedFiles($cwd) === []) {
+                throw $exception;
+            }
+
+            return false;
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function conflictedFiles(string $cwd): array
+    {
+        $output = $this->run(['diff', '--name-only', '--diff-filter=U'], $cwd);
+
+        return array_values(array_filter(array_map('trim', explode("\n", $output))));
+    }
+
+    /**
+     * Finish a merge whose conflicts were resolved.
+     */
+    public function concludeMerge(string $cwd): string
+    {
+        $this->run(['add', '--all'], $cwd);
+        $this->run([...self::identity(), 'commit', '--no-edit', '--no-verify'], $cwd);
+
+        return $this->run(['rev-parse', 'HEAD'], $cwd);
+    }
+
+    public function abortMerge(string $cwd): void
+    {
+        try {
+            $this->run(['merge', '--abort'], $cwd);
+        } catch (RunFailed) {
+            //
+        }
+    }
+
+    /**
+     * Commits made by the app use the Software Factory identity and are never signed.
+     *
+     * @return array<int, string>
+     */
+    public static function identity(): array
+    {
+        return [
             '-c', 'user.name='.config('factory.runner.git_author_name'),
             '-c', 'user.email='.config('factory.runner.git_author_email'),
             '-c', 'commit.gpgsign=false',
-            'commit', '--no-verify', '-m', $message,
-        ], $cwd);
-
-        return $this->run(['rev-parse', 'HEAD'], $cwd);
+        ];
     }
 
     public function push(string $cwd, string $branch, Credential $credential): void

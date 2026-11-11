@@ -100,6 +100,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Pull requests
+    |--------------------------------------------------------------------------
+    */
+
+    'git' => [
+        // How finished features are merged: "squash", "merge" or "rebase" (GitLab: squash or merge).
+        'merge_method' => env('FACTORY_MERGE_METHOD', 'squash'),
+
+        // How often open pull requests are checked when webhooks can't reach this app (minutes).
+        'sync_every_minutes' => (int) env('FACTORY_PR_SYNC_MINUTES', 5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Spec Kit
     |--------------------------------------------------------------------------
     |

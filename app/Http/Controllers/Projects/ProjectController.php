@@ -17,10 +17,13 @@ use App\Models\Team;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Runner\RunnerHealth;
+use App\Services\Providers\ProviderException;
+use App\Services\Providers\ProviderRegistry;
 use App\Support\RepositoryReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -134,10 +137,73 @@ class ProjectController extends Controller
     {
         Gate::authorize('update', $project);
 
+        // Every project gets a webhook secret, so the webhook can be set up by hand too.
+        if (! $project->webhook_secret) {
+            $project->forceFill(['webhook_secret' => Str::random(40)])->save();
+        }
+
         return Inertia::render('projects/edit', [
             'project' => $project->toSummary(),
             ...$this->formOptions($request->user(), $current_team, $project),
+            'webhook' => [
+                'url' => $this->webhookUrl($project),
+                'secret' => $project->webhook_secret,
+                'registered' => $project->webhook_id !== null,
+                'last_received_at' => $project->webhook_last_received_at?->toISOString(),
+                'reachable' => ! $this->isLocalUrl($this->webhookUrl($project)),
+                'sync_every_minutes' => (int) config('factory.git.sync_every_minutes'),
+            ],
         ]);
+    }
+
+    /**
+     * Add the webhook on GitHub/GitLab so merged pull requests move cards to Done right away.
+     */
+    public function registerWebhook(Team $current_team, Project $project, ProviderRegistry $providers): RedirectResponse
+    {
+        Gate::authorize('update', $project);
+
+        $url = $this->webhookUrl($project);
+
+        if ($this->isLocalUrl($url)) {
+            throw ValidationException::withMessages(['webhook' => __(':provider can’t reach :url. Expose the app with a tunnel (for example cloudflared or ngrok), set APP_URL to its public address, then try again. Until then, open pull requests are checked every few minutes.', ['provider' => $project->provider->label(), 'url' => $url])]);
+        }
+
+        if (! $project->gitCredential) {
+            throw ValidationException::withMessages(['webhook' => __('Pick a git token first.')]);
+        }
+
+        if (! $project->webhook_secret) {
+            $project->forceFill(['webhook_secret' => Str::random(40)])->save();
+        }
+
+        try {
+            $id = $providers->gitHost($project->gitCredential)->registerWebhook($project->repo_full_name, $url, (string) $project->webhook_secret);
+        } catch (ProviderException $exception) {
+            throw ValidationException::withMessages(['webhook' => $exception->getMessage()]);
+        }
+
+        $project->forceFill(['webhook_id' => $id])->save();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Webhook added on :provider.', ['provider' => $project->provider->label()])]);
+
+        return back();
+    }
+
+    private function webhookUrl(Project $project): string
+    {
+        return route($project->provider->value === 'gitlab' ? 'webhooks.gitlab' : 'webhooks.github', ['projectId' => $project->id]);
+    }
+
+    private function isLocalUrl(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'], true)
+            || str_ends_with($host, '.localhost')
+            || str_ends_with($host, '.test')
+            || str_ends_with($host, '.local')
+            || preg_match('/^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./', $host) === 1;
     }
 
     public function update(UpdateProjectRequest $request, Team $current_team, Project $project, ConnectRepository $connect): RedirectResponse

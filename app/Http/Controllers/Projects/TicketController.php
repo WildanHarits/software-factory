@@ -96,6 +96,18 @@ class TicketController extends Controller
         return back();
     }
 
+    /**
+     * Merge the latest base branch again, push, and open or refresh the pull request.
+     */
+    public function publish(Request $request, Team $current_team, Project $project, Ticket $ticket): RedirectResponse
+    {
+        Gate::authorize('work', $project);
+
+        $this->workflow->publish($ticket, $request->user());
+
+        return back();
+    }
+
     public function cancel(Team $current_team, Project $project, Ticket $ticket): RedirectResponse
     {
         Gate::authorize('work', $project);

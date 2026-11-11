@@ -60,6 +60,16 @@ class SimulatedAgentRunnerTest extends TestCase
         $this->assertStringContainsString('Only signed-in people', (string) File::get("{$this->dir}/specs/001-demo/spec.md"));
     }
 
+    public function test_it_resolves_conflicts_by_keeping_both_sides()
+    {
+        File::put("{$this->dir}/app.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\n");
+
+        $result = $this->invoke("Merging. Git stopped on conflicts in:\n- app.txt\n\nResolve every conflict.");
+
+        $this->assertTrue($result->successful);
+        $this->assertSame("ours\ntheirs\n", File::get("{$this->dir}/app.txt"));
+    }
+
     public function test_it_is_refused_in_production()
     {
         config(['factory.runner.driver' => 'simulated']);

@@ -9,6 +9,7 @@ use App\Runner\RunCancelled;
 use App\Runner\RunFailed;
 use App\Runner\RunRecorder;
 use App\Runs\Pipelines\Pipeline;
+use App\Runs\Pipelines\PublishFeature;
 use App\Runs\Pipelines\SetupSpecKit;
 use App\Runs\Pipelines\TicketPhase;
 use App\Runs\Pipelines\UpdateConstitution;
@@ -39,6 +40,7 @@ class ExecuteRun implements ShouldQueue
             RunType::SetupSpecKit => SetupSpecKit::class,
             RunType::Constitution => UpdateConstitution::class,
             RunType::Specify, RunType::Clarify, RunType::Plan, RunType::Tasks, RunType::Analyze, RunType::Implement => TicketPhase::class,
+            RunType::Publish => PublishFeature::class,
         };
     }
 

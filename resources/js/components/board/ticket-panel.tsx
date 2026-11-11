@@ -1,6 +1,7 @@
 import { Form, Link } from '@inertiajs/react';
 import {
     ArrowRight,
+    GitPullRequest,
     CircleAlert,
     ExternalLink,
     GitBranch,
@@ -33,6 +34,7 @@ import {
     cancel,
     destroy,
     move,
+    publish,
     reply,
     retry,
     update,
@@ -265,7 +267,7 @@ function Actions({
     }
 
     if (ticket.stage === 'review') {
-        return <MoveForm args={args} stage="done" label="Move to Done" />;
+        return <ReviewActions ticket={ticket} args={args} />;
     }
 
     if (ticket.stage === 'done') {
@@ -280,7 +282,7 @@ function Actions({
                     stage={ticket.next_stage}
                     label={
                         ticket.next_stage === 'review'
-                            ? 'Approve and move to Review'
+                            ? 'Approve and open the pull request'
                             : ticket.stage === 'clarify'
                               ? `Done answering, start ${ticket.next_stage_label}`
                               : `Approve and start ${ticket.next_stage_label}`
@@ -313,6 +315,93 @@ function Actions({
                     )}
                 </Form>
             ) : null}
+        </div>
+    );
+}
+
+function ReviewActions({
+    ticket,
+    args,
+}: {
+    ticket: TicketDetail;
+    args: { current_team: string; project: string; ticket: number };
+}) {
+    return (
+        <div className="space-y-3 rounded-lg border p-3">
+            {ticket.pull_request_url ? (
+                <div className="space-y-1">
+                    <a
+                        href={ticket.pull_request_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 font-medium underline-offset-4 hover:underline"
+                    >
+                        <GitPullRequest className="size-4" />
+                        Pull request #{ticket.pull_request_number}
+                        <ExternalLink className="size-3.5" />
+                    </a>
+                    <p className="text-sm text-muted-foreground">
+                        {ticket.pull_request_state_label}
+                        {ticket.pull_request_state === 'open'
+                            ? ` · ${ticket.merge_policy_label}. The card moves to Done when it's merged.`
+                            : ''}
+                    </p>
+                </div>
+            ) : (
+                <p className="text-sm text-muted-foreground">
+                    No pull request yet.
+                </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+                <Form
+                    {...publish.form(args)}
+                    options={{ preserveScroll: true }}
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Button
+                                type="submit"
+                                variant={
+                                    ticket.status === 'failed' ||
+                                    !ticket.pull_request_url
+                                        ? 'default'
+                                        : 'outline'
+                                }
+                                disabled={processing}
+                                data-test="publish-ticket"
+                            >
+                                <RotateCcw />
+                                {ticket.pull_request_state === 'open'
+                                    ? 'Update pull request'
+                                    : 'Open pull request'}
+                            </Button>
+                            <InputError
+                                className="mt-2"
+                                message={errors.ticket}
+                            />
+                        </>
+                    )}
+                </Form>
+                <Form {...move.form(args)} options={{ preserveScroll: true }}>
+                    {({ processing }) => (
+                        <>
+                            <input type="hidden" name="stage" value="done" />
+                            <Button
+                                type="submit"
+                                variant="ghost"
+                                disabled={processing}
+                            >
+                                Mark as Done
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Update merges the latest base branch into the feature (the agent
+                resolves conflicts) and pushes it.
+            </p>
         </div>
     );
 }
@@ -390,7 +479,9 @@ function ReplyForm({
                             placeholder={
                                 answering
                                     ? 'Answer the questions above. The agent continues the same conversation and updates the spec.'
-                                    : `Tell the agent what to change in this ${ticket.stage_label.toLowerCase()} step. It continues the same conversation.`
+                                    : ticket.stage === 'review'
+                                      ? 'Tell the agent what to change in the implementation (e.g. from review comments). It continues the Implement conversation and pushes to the pull request.'
+                                      : `Tell the agent what to change in this ${ticket.stage_label.toLowerCase()} step. It continues the same conversation.`
                             }
                         />
                         <InputError message={errors.message ?? errors.ticket} />

@@ -1,4 +1,7 @@
 import {
+    GitMerge,
+    GitPullRequest,
+    GitPullRequestClosed,
     CircleAlert,
     CircleCheck,
     LoaderCircle,
@@ -82,9 +85,38 @@ export default function TicketCard({
                             aria-label="Runs phases automatically"
                         />
                     ) : null}
+                    <PullRequestBadge ticket={ticket} />
                     {ticket.cost_usd > 0 ? formatCost(ticket.cost_usd) : null}
                 </span>
             </div>
         </button>
+    );
+}
+
+export function PullRequestBadge({ ticket }: { ticket: TicketCardType }) {
+    if (!ticket.pull_request_number) {
+        return null;
+    }
+
+    const Icon =
+        ticket.pull_request_state === 'merged'
+            ? GitMerge
+            : ticket.pull_request_state === 'closed'
+              ? GitPullRequestClosed
+              : GitPullRequest;
+
+    return (
+        <span
+            className={cn(
+                'flex items-center gap-0.5',
+                ticket.pull_request_state === 'merged' &&
+                    'text-purple-700 dark:text-purple-300',
+                ticket.pull_request_state === 'open' &&
+                    'text-green-700 dark:text-green-400',
+            )}
+            title={`Pull request ${ticket.pull_request_state ?? ''}`}
+        >
+            <Icon className="size-3.5" />#{ticket.pull_request_number}
+        </span>
     );
 }
