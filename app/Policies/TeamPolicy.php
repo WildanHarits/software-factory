@@ -91,6 +91,22 @@ class TeamPolicy
     }
 
     /**
+     * Determine whether the user can create and change projects in the team.
+     */
+    public function manageProjects(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, TeamPermission::ManageProjects);
+    }
+
+    /**
+     * Determine whether the user can add and change the team's API tokens.
+     */
+    public function manageCredentials(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, TeamPermission::ManageCredentials);
+    }
+
+    /**
      * Determine whether the user can delete the model.
      */
     public function delete(User $user, Team $team): bool

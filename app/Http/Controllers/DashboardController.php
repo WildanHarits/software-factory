@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Project;
 use App\Models\TeamInvitation;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,8 +32,16 @@ class DashboardController extends Controller
                 ],
             ]);
 
+        $team = $request->user()->currentTeam;
+
         return Inertia::render('dashboard', [
             'pendingInvitations' => $pendingInvitations,
+            'projects' => $team->projects()
+                ->with(['gitCredential.team', 'gitCredential.user', 'aiCredential.team', 'aiCredential.user'])
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Project $project) => $project->toSummary()),
+            'canManageProjects' => $request->user()->can('manageProjects', $team),
         ]);
     }
 }

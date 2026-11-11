@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
@@ -25,6 +26,18 @@ Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+        Route::get('projects/create', [ProjectController::class, 'create'])->name('projects.create');
+        Route::post('projects', [ProjectController::class, 'store'])->name('projects.store');
+
+        // Projects are looked up within the team in the URL, since slugs are only unique per team.
+        Route::scopeBindings()->group(function () {
+            Route::get('projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
+            Route::get('projects/{project}/settings', [ProjectController::class, 'edit'])->name('projects.edit');
+            Route::patch('projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
+            Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
+            Route::post('projects/{project}/refresh', [ProjectController::class, 'refresh'])->middleware('throttle:20,1')->name('projects.refresh');
+        });
     });
 
 Route::middleware(['auth'])->group(function () {

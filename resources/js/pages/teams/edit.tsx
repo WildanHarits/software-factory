@@ -1,5 +1,5 @@
-import { Form, Head, router } from '@inertiajs/react';
-import { ChevronDown, Mail, UserPlus, X } from 'lucide-react';
+import { Form, Head, Link, router } from '@inertiajs/react';
+import { ChevronDown, KeyRound, Mail, UserPlus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import CancelInvitationModal from '@/components/cancel-invitation-modal';
 import DeleteTeamModal from '@/components/delete-team-modal';
@@ -27,6 +27,7 @@ import {
 import { useInitials } from '@/hooks/use-initials';
 import { edit, index, update } from '@/routes/teams';
 import { update as updateMember } from '@/routes/teams/members';
+import { index as teamTokens } from '@/routes/teams/tokens';
 import type {
     RoleOption,
     Team,
@@ -142,6 +143,26 @@ export default function TeamEdit({
                             <Heading variant="small" title={team.name} />
                         </>
                     )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <Heading
+                        variant="small"
+                        title="Tokens"
+                        description="Shared GitHub, GitLab and Anthropic tokens for this team's projects"
+                    />
+
+                    <Button variant="outline" asChild>
+                        <Link
+                            href={teamTokens(team.slug)}
+                            data-test="team-tokens-link"
+                        >
+                            <KeyRound />
+                            {permissions.canManageCredentials
+                                ? 'Manage tokens'
+                                : 'View tokens'}
+                        </Link>
+                    </Button>
                 </div>
 
                 <div className="space-y-6">

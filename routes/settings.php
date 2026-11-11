@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Credentials\CredentialController;
+use App\Http\Controllers\Credentials\CredentialPageController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
@@ -29,6 +31,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
 
+    Route::get('settings/tokens', [CredentialPageController::class, 'personal'])->name('tokens.index');
+    Route::post('settings/tokens', [CredentialController::class, 'storePersonal'])->name('tokens.store');
+
+    Route::patch('credentials/{credential}', [CredentialController::class, 'update'])->name('credentials.update');
+    Route::delete('credentials/{credential}', [CredentialController::class, 'destroy'])->name('credentials.destroy');
+    Route::post('credentials/{credential}/verify', [CredentialController::class, 'verify'])->middleware('throttle:20,1')->name('credentials.verify');
+    Route::get('credentials/{credential}/namespaces', [CredentialController::class, 'namespaces'])->middleware('throttle:30,1')->name('credentials.namespaces');
+
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');
 
@@ -36,6 +46,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('settings/teams/{team}', [TeamController::class, 'edit'])->name('teams.edit');
         Route::patch('settings/teams/{team}', [TeamController::class, 'update'])->name('teams.update');
         Route::delete('settings/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
+        Route::get('settings/teams/{team}/tokens', [CredentialPageController::class, 'team'])->name('teams.tokens.index');
+        Route::post('settings/teams/{team}/tokens', [CredentialController::class, 'storeForTeam'])->name('teams.tokens.store');
         Route::post('settings/teams/{team}/switch', [TeamController::class, 'switch'])->name('teams.switch');
         Route::delete('settings/teams/{team}/leave', [TeamController::class, 'leave'])->name('teams.leave');
 
