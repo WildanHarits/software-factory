@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -153,6 +154,14 @@ class Project extends Model
             'created_by' => $this->creator?->name,
             'created_at' => $this->created_at?->toISOString(),
         ];
+    }
+
+    /**
+     * @return HasMany<Run, $this>
+     */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(Run::class);
     }
 
     public function getRouteKeyName(): string

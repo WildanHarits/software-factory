@@ -3,6 +3,7 @@
 namespace App\Services\Providers;
 
 use App\Data\Providers\ProviderAccount;
+use App\Data\Providers\PullRequest;
 use App\Data\Providers\RemoteRepository;
 use App\Data\Providers\RepositoryNamespace;
 use App\Models\Credential;
@@ -99,6 +100,19 @@ class GitLabHost implements GitHost
         }
 
         return ! empty($response->json());
+    }
+
+    public function createPullRequest(string $fullName, string $head, string $base, string $title, string $body): PullRequest
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->post('projects/'.rawurlencode($fullName).'/merge_requests', [
+            'source_branch' => $head,
+            'target_branch' => $base,
+            'title' => $title,
+            'description' => $body,
+            'remove_source_branch' => true,
+        ]), 'open a merge request');
+
+        return new PullRequest(number: (int) $response->json('iid'), url: (string) $response->json('web_url'));
     }
 
     /**

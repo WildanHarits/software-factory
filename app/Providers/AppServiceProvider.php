@@ -3,12 +3,16 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Runner\Agent\AgentRunner;
+use App\Runner\Agent\LocalAgentRunner;
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use InvalidArgumentException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -17,7 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(AgentRunner::class, fn ($app) => match (config('factory.runner.driver')) {
+            'local' => $app->make(LocalAgentRunner::class),
+            default => throw new InvalidArgumentException('Unknown runner driver ['.config('factory.runner.driver').']. Use "local".'),
+        });
     }
 
     /**
@@ -27,6 +34,20 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureGates();
+        $this->configureDevCommands();
+    }
+
+    /**
+     * `composer run dev` runs Horizon instead of a plain queue worker, so agent runs on the "runs" queue are picked up too.
+     */
+    protected function configureDevCommands(): void
+    {
+        if (! $this->app->runningInConsole() || ! class_exists(DevCommands::class)) {
+            return;
+        }
+
+        DevCommands::except('queue');
+        DevCommands::artisan('horizon', 'horizon');
     }
 
     /**

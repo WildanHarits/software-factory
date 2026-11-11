@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Projects;
 use App\Actions\Projects\ConnectRepository;
 use App\Enums\ApprovalMode;
 use App\Enums\MergePolicy;
+use App\Enums\RunType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Projects\StoreProjectRequest;
 use App\Http\Requests\Projects\UpdateProjectRequest;
 use App\Models\Credential;
 use App\Models\Project;
+use App\Models\Run;
 use App\Models\Team;
 use App\Models\User;
+use App\Runner\RunnerHealth;
 use App\Support\RepositoryReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,16 +88,32 @@ class ProjectController extends Controller
         return to_route('projects.show', ['current_team' => $current_team->slug, 'project' => $project->slug]);
     }
 
-    public function show(Request $request, Team $current_team, Project $project): Response
+    public function show(Request $request, Team $current_team, Project $project, RunnerHealth $health): Response
     {
         Gate::authorize('view', $project);
 
         $project->load(['gitCredential.team', 'gitCredential.user', 'aiCredential.team', 'aiCredential.user', 'creator']);
+        $canManage = $request->user()->can('update', $project);
+
+        $runs = $project->runs()->with('triggeredBy')->latest('id')->limit(10)->get();
+
+        // A setup PR that hasn't been merged yet (Spec Kit isn't on the default branch).
+        $setupPullRequest = $project->speckit_initialized ? null : $project->runs()
+            ->where('type', RunType::SetupSpecKit)
+            ->whereNotNull('pull_request_url')
+            ->latest('id')
+            ->first();
 
         return Inertia::render('projects/show', [
             'team' => ['name' => $current_team->name, 'slug' => $current_team->slug],
             'project' => $project->toSummary(),
-            'canManage' => $request->user()->can('update', $project),
+            'canManage' => $canManage,
+            'runs' => $runs->map(fn (Run $run) => $run->toSummary()),
+            'setupPullRequest' => $setupPullRequest?->toSummary(),
+            'runnerProblems' => $canManage ? $health->problems() : [],
+            'models' => $this->options(config('factory.models')),
+            'efforts' => $this->options(config('factory.efforts')),
+            'speckitVersion' => config('factory.speckit.version'),
         ]);
     }
 

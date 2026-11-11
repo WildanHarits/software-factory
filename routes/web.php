@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Projects\ProjectController;
+use App\Http\Controllers\Projects\RunController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
@@ -37,6 +38,12 @@ Route::prefix('{current_team}')
             Route::patch('projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
             Route::delete('projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
             Route::post('projects/{project}/refresh', [ProjectController::class, 'refresh'])->middleware('throttle:20,1')->name('projects.refresh');
+
+            Route::post('projects/{project}/runs/setup', [RunController::class, 'setup'])->name('projects.runs.setup');
+            Route::post('projects/{project}/runs/constitution', [RunController::class, 'constitution'])->name('projects.runs.constitution');
+            Route::get('projects/{project}/runs/{run}', [RunController::class, 'show'])->name('projects.runs.show');
+            Route::get('projects/{project}/runs/{run}/events', [RunController::class, 'events'])->name('projects.runs.events');
+            Route::post('projects/{project}/runs/{run}/cancel', [RunController::class, 'cancel'])->name('projects.runs.cancel');
         });
     });
 

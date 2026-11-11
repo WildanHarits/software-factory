@@ -44,6 +44,18 @@ return [
             'after_commit' => false,
         ],
 
+        // Agent runs can take an hour, so they get their own connection whose
+        // retry_after is longer than the longest run (otherwise Redis would hand
+        // a still-running job to a second worker).
+        'redis-runs' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'runs',
+            'retry_after' => (int) env('FACTORY_RUN_TIMEOUT', 3600) + 300,
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

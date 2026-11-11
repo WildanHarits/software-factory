@@ -3,6 +3,7 @@
 namespace App\Services\Providers;
 
 use App\Data\Providers\ProviderAccount;
+use App\Data\Providers\PullRequest;
 use App\Data\Providers\RemoteRepository;
 use App\Data\Providers\RepositoryNamespace;
 use App\Models\Credential;
@@ -91,6 +92,18 @@ class GitHubHost implements GitHost
         }
 
         return true;
+    }
+
+    public function createPullRequest(string $fullName, string $head, string $base, string $title, string $body): PullRequest
+    {
+        $response = $this->send(fn (PendingRequest $http) => $http->post("/repos/{$fullName}/pulls", [
+            'title' => $title,
+            'head' => $head,
+            'base' => $base,
+            'body' => $body,
+        ]), 'open a pull request');
+
+        return new PullRequest(number: (int) $response->json('number'), url: (string) $response->json('html_url'));
     }
 
     /**
