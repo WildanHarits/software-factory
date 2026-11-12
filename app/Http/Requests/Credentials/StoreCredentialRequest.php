@@ -76,7 +76,8 @@ class StoreCredentialRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'token' => trim((string) $this->input('token')),
+            // Tokens never contain whitespace; long ones pick up line breaks when copied from a terminal.
+            'token' => preg_replace('/\s+/', '', (string) $this->input('token')),
             'base_url' => $this->filled('base_url') ? rtrim(trim((string) $this->input('base_url')), '/') : null,
         ]);
     }

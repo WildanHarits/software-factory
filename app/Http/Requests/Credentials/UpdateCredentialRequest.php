@@ -40,7 +40,7 @@ class UpdateCredentialRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'token' => $this->filled('token') ? trim((string) $this->input('token')) : null,
+            'token' => $this->filled('token') ? preg_replace('/\s+/', '', (string) $this->input('token')) : null,
             'base_url' => $this->filled('base_url') ? rtrim(trim((string) $this->input('base_url')), '/') : null,
         ]);
     }

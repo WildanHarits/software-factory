@@ -40,6 +40,27 @@ class AiCredentialTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_line_breaks_copied_from_the_terminal_are_removed_from_tokens()
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post(route('tokens.store'), [
+            'provider' => 'claude_subscription',
+            'name' => 'Wrapped',
+            'token' => "  sk-ant-oat01-abcdefgh\nijklmnop\r\nqrstuv  ",
+        ])->assertSessionHasNoErrors();
+
+        $credential = $user->credentials()->firstOrFail();
+        $this->assertSame('sk-ant-oat01-abcdefghijklmnopqrstuv', $credential->token);
+
+        $this->actingAs($user)->patch(route('credentials.update', $credential), [
+            'name' => 'Wrapped',
+            'token' => "sk-ant-oat01-new\n token",
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('sk-ant-oat01-newtoken', $credential->fresh()->token);
+    }
+
     public function test_a_subscription_token_must_look_like_one()
     {
         $user = User::factory()->create();
