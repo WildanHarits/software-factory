@@ -7,13 +7,19 @@ enum CredentialProvider: string
     case GitHub = 'github';
     case GitLab = 'gitlab';
     case Anthropic = 'anthropic';
+    case ClaudeSubscription = 'claude_subscription';
+    case Meta = 'meta';
+    case Qwen = 'qwen';
 
     public function label(): string
     {
         return match ($this) {
             self::GitHub => 'GitHub',
             self::GitLab => 'GitLab',
-            self::Anthropic => 'Anthropic',
+            self::Anthropic => 'Anthropic API',
+            self::ClaudeSubscription => 'Claude subscription',
+            self::Meta => 'Meta',
+            self::Qwen => 'Qwen',
         };
     }
 
@@ -22,7 +28,32 @@ enum CredentialProvider: string
      */
     public function isGit(): bool
     {
-        return $this !== self::Anthropic;
+        return in_array($this, [self::GitHub, self::GitLab], true);
+    }
+
+    /**
+     * Whether this token runs the agent (Claude Code).
+     */
+    public function isAi(): bool
+    {
+        return ! $this->isGit();
+    }
+
+    /**
+     * A Claude Pro/Max/Team login token. Anthropic only allows it for its owner's own use,
+     * so it is always a personal token and only runs work its owner starts.
+     */
+    public function isSubscription(): bool
+    {
+        return $this === self::ClaudeSubscription;
+    }
+
+    /**
+     * An Anthropic-compatible endpoint from another company, reached through ANTHROPIC_BASE_URL.
+     */
+    public function isThirdPartyModel(): bool
+    {
+        return in_array($this, [self::Meta, self::Qwen], true);
     }
 
     /**
@@ -36,8 +67,10 @@ enum CredentialProvider: string
     /**
      * @return array<int, array{value: string, label: string}>
      */
-    public static function options(): array
+    public static function options(bool $includeSubscription = true): array
     {
-        return array_map(fn (self $provider) => ['value' => $provider->value, 'label' => $provider->label()], self::cases());
+        $cases = array_filter(self::cases(), fn (self $provider) => $includeSubscription || ! $provider->isSubscription());
+
+        return array_values(array_map(fn (self $provider) => ['value' => $provider->value, 'label' => $provider->label()], $cases));
     }
 }

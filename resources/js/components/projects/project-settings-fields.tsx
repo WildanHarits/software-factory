@@ -28,26 +28,49 @@ export function AgentDefaultsFields({ options, values, errors }: Props) {
         <div className="grid gap-6">
             <LabeledSelect
                 id="ai_credential_id"
-                label="Anthropic API key"
+                label="AI for agents"
                 options={[
                     { value: 'none', label: 'None yet, add one later' },
+                    {
+                        value: 'subscription',
+                        label: "Each member's own Claude subscription",
+                    },
                     ...credentialOptions(options.aiCredentials),
                 ]}
                 defaultValue={
-                    values.ai_credential_id
-                        ? String(values.ai_credential_id)
-                        : 'none'
+                    values.ai_uses_member_subscription
+                        ? 'subscription'
+                        : values.ai_credential_id
+                          ? String(values.ai_credential_id)
+                          : 'none'
                 }
                 help={
-                    options.aiCredentials.length === 0 ? (
-                        <>
-                            No Anthropic keys yet. Add one in{' '}
-                            <TokenLinks team={options.team} />. Agents can't run
-                            without it.
-                        </>
-                    ) : (
-                        'Used to run Claude Code for this project.'
-                    )
+                    <>
+                        A key (Anthropic API, Meta or Qwen) is shared by
+                        everyone's runs on this project. With{' '}
+                        <em>each member's own Claude subscription</em>, every
+                        run uses the subscription of the person who starts it,
+                        so each member adds theirs under{' '}
+                        <Link
+                            href={personalTokens()}
+                            className="underline underline-offset-4"
+                        >
+                            personal tokens
+                        </Link>
+                        {options.hasSubscription
+                            ? ' (yours is saved).'
+                            : " (you haven't added yours yet)."}
+                        {options.aiCredentials.length === 0 ? (
+                            <>
+                                {' '}
+                                Keys are added in{' '}
+                                <TokenLinks team={options.team} />.
+                            </>
+                        ) : null}{' '}
+                        With Meta or Qwen, the Claude model you pick maps to
+                        that provider's model of the same tier, and effort is
+                        ignored.
+                    </>
                 }
                 error={errors.ai_credential_id}
             />

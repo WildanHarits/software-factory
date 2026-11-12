@@ -11,6 +11,8 @@ use App\Runner\StreamingProcess;
  *
  * Isolation:
  * - --bare: no personal settings, hooks, plugins, memory or keychain login; only the project's API key.
+ *   A Claude subscription token can't be used in bare mode, so those runs drop --bare and instead turn
+ *   off hooks, MCP servers and the repository's own settings explicitly.
  * - Its own config folder per project (CLAUDE_CONFIG_DIR), never ~/.claude.
  * - Claude Code's sandbox (macOS Seatbelt / Linux bubblewrap) for shell commands: writes only in the
  *   workspace, network only to allowed domains, and the app folder (.env) and common secret folders unreadable.
@@ -91,10 +93,41 @@ class LocalAgentRunner implements AgentRunner
     {
         return [
             ...$invocation->environment,
-            'ANTHROPIC_API_KEY' => $invocation->apiKey,
+            ...$this->authEnvironment($invocation),
             'CLAUDE_CONFIG_DIR' => $invocation->configDirectory,
             'DISABLE_AUTOUPDATER' => '1',
             'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' => '1',
+        ];
+    }
+
+    /**
+     * How Claude Code signs in, and which models it uses, for each kind of AI token.
+     *
+     * @return array<string, string>
+     */
+    private function authEnvironment(AgentInvocation $invocation): array
+    {
+        $provider = $invocation->provider;
+
+        if ($provider->isSubscription()) {
+            return ['CLAUDE_CODE_OAUTH_TOKEN' => $invocation->apiKey];
+        }
+
+        $tiers = ProviderModels::tiers($provider, $invocation->baseUrl);
+
+        if ($tiers === null) {
+            return ['ANTHROPIC_API_KEY' => $invocation->apiKey];
+        }
+
+        // Every model alias points at the provider's models, so background tasks and
+        // subagents never ask for a Claude model the provider doesn't serve.
+        return [
+            'ANTHROPIC_BASE_URL' => (string) ProviderModels::baseUrl($provider, $invocation->baseUrl),
+            'ANTHROPIC_AUTH_TOKEN' => $invocation->apiKey,
+            'ANTHROPIC_DEFAULT_OPUS_MODEL' => $tiers['opus'],
+            'ANTHROPIC_DEFAULT_SONNET_MODEL' => $tiers['sonnet'],
+            'ANTHROPIC_DEFAULT_HAIKU_MODEL' => $tiers['haiku'],
+            'CLAUDE_CODE_SUBAGENT_MODEL' => $tiers['haiku'],
         ];
     }
 
@@ -115,14 +148,18 @@ class LocalAgentRunner implements AgentRunner
      */
     public function command(AgentInvocation $invocation): array
     {
+        $provider = $invocation->provider;
+
         $command = [
             $this->claudeBinary(),
             '-p', $invocation->prompt,
-            '--bare',
+            // Bare mode ignores subscription logins; see settings() for what replaces it.
+            ...($provider->isSubscription() ? ['--setting-sources', 'user', '--strict-mcp-config'] : ['--bare']),
             '--output-format', 'stream-json',
             '--verbose',
-            '--model', $invocation->model,
-            '--effort', $invocation->effort,
+            '--model', ProviderModels::model($provider, $invocation->baseUrl, $invocation->model),
+            // Effort is a Claude feature; other providers may reject it.
+            ...($provider->isThirdPartyModel() ? [] : ['--effort', $invocation->effort]),
             '--permission-mode', 'acceptEdits',
             '--permission-prompts', 'none',
             '--settings', json_encode($this->settings($invocation), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
@@ -134,7 +171,8 @@ class LocalAgentRunner implements AgentRunner
             array_push($command, '--disallowedTools', implode(',', $disallowed));
         }
 
-        if ($invocation->maxBudgetUsd !== null && $invocation->maxBudgetUsd > 0) {
+        // A subscription has no per-token bill, so a dollar budget would only stop runs early.
+        if (! $provider->isSubscription() && $invocation->maxBudgetUsd !== null && $invocation->maxBudgetUsd > 0) {
             array_push($command, '--max-budget-usd', (string) $invocation->maxBudgetUsd);
         }
 
@@ -158,6 +196,9 @@ class LocalAgentRunner implements AgentRunner
         $secretFolders = ['~/.ssh', '~/.aws', '~/.config/gh', '~/.gnupg', '~/.kube', '~/.docker', '~/.claude', '~/Library/Keychains'];
 
         return [
+            // Bare mode already skips hooks; without it (subscription runs) a repository's hooks
+            // would run outside the sandbox, so they are always off.
+            'disableAllHooks' => true,
             'sandbox' => [
                 'enabled' => true,
                 // Refuse to run at all rather than run unsandboxed.

@@ -223,7 +223,7 @@ class TicketWorkflowTest extends TestCase
         $this->moveTo($ticket, 'specify')->assertSessionHasErrors(['ticket' => 'Set up Spec Kit in this repository first.']);
 
         $this->project->update(['speckit_initialized' => true, 'ai_credential_id' => null]);
-        $this->moveTo($ticket, 'specify')->assertSessionHasErrors(['ticket' => 'This project has no Anthropic API key. Pick one in the project settings.']);
+        $this->moveTo($ticket, 'specify')->assertSessionHasErrors(['ticket' => 'This project has no AI key. Pick one in the project settings.']);
 
         $this->assertSame(TicketStage::Backlog, $ticket->fresh()->stage);
     }

@@ -42,4 +42,19 @@ class CredentialFactory extends Factory
     {
         return $this->state(fn () => ['provider' => CredentialProvider::Anthropic, 'token' => 'sk-ant-'.Str::random(40)]);
     }
+
+    public function subscription(): static
+    {
+        return $this->state(fn () => ['provider' => CredentialProvider::ClaudeSubscription, 'token' => 'sk-ant-oat01-'.Str::random(40)]);
+    }
+
+    public function meta(): static
+    {
+        return $this->state(fn () => ['provider' => CredentialProvider::Meta, 'token' => 'meta-'.Str::random(40)]);
+    }
+
+    public function qwen(string $baseUrl = 'https://dashscope-intl.aliyuncs.com/apps/anthropic'): static
+    {
+        return $this->state(fn () => ['provider' => CredentialProvider::Qwen, 'token' => 'sk-'.Str::random(32), 'base_url' => $baseUrl]);
+    }
 }

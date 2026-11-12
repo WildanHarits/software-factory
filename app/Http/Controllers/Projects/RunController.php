@@ -33,8 +33,8 @@ class RunController extends Controller
             throw ValidationException::withMessages(['run' => __('Spec Kit is already set up in this repository.')]);
         }
 
-        if ($principles !== '' && ! $project->ai_credential_id) {
-            throw ValidationException::withMessages(['principles' => __('Writing the constitution needs an Anthropic API key. Pick one in the project settings, or leave this empty.')]);
+        if ($principles !== '' && ! $project->aiCredentialFor($request->user())) {
+            throw ValidationException::withMessages(['principles' => __(':reason Or leave this empty to only install Spec Kit.', ['reason' => $project->missingAiCredentialMessage()])]);
         }
 
         return $this->start($request, $current_team, $project, RunType::SetupSpecKit, ['principles' => $principles]);
@@ -49,8 +49,8 @@ class RunController extends Controller
             throw ValidationException::withMessages(['run' => __('Set up Spec Kit first.')]);
         }
 
-        if (! $project->ai_credential_id) {
-            throw ValidationException::withMessages(['instructions' => __('This needs an Anthropic API key. Pick one in the project settings.')]);
+        if (! $project->aiCredentialFor($request->user())) {
+            throw ValidationException::withMessages(['instructions' => $project->missingAiCredentialMessage()]);
         }
 
         return $this->start($request, $current_team, $project, RunType::Constitution, ['instructions' => trim((string) $request->validated('instructions'))]);

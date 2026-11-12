@@ -15,6 +15,7 @@ export type ProjectSummary = {
     ai_credential_id: number | null;
     git_credential: CredentialSummary | null;
     ai_credential: CredentialSummary | null;
+    ai_uses_member_subscription: boolean;
     default_model: string;
     default_model_label: string;
     default_effort: string;
@@ -32,6 +33,8 @@ export type ProjectSummary = {
 export type ProjectFormOptions = {
     gitCredentials: CredentialSummary[];
     aiCredentials: CredentialSummary[];
+    /** Whether the signed-in person has saved a Claude subscription token. */
+    hasSubscription: boolean;
     models: Option[];
     efforts: Option[];
     approvalModes: Option[];
@@ -42,6 +45,7 @@ export type ProjectFormOptions = {
 export type ProjectSettingsValues = {
     git_credential_id?: number | null;
     ai_credential_id?: number | null;
+    ai_uses_member_subscription?: boolean;
     default_model: string;
     default_effort: string;
     approval_mode: string;

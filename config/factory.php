@@ -68,6 +68,47 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Other AI providers
+    |--------------------------------------------------------------------------
+    |
+    | Claude Code talks to these through their Anthropic-compatible endpoints.
+    | Tickets still pick a Claude model; it is mapped to the provider's model
+    | of the same tier (opus = strongest, sonnet = balanced, haiku = fast).
+    | Effort only applies to Claude models and is not sent to these.
+    |
+    */
+
+    'ai_providers' => [
+        'meta' => [
+            'base_url' => env('META_ANTHROPIC_BASE_URL', 'https://api.meta.ai'),
+            'models' => [
+                'opus' => env('META_MODEL_OPUS', 'muse-wonder-1.0'),
+                'sonnet' => env('META_MODEL_SONNET', 'muse-spark-1.3'),
+                'haiku' => env('META_MODEL_HAIKU', 'muse-ember-1.0'),
+            ],
+        ],
+
+        // Alibaba Model Studio. Each plan has its own endpoint, and a key only works with its own.
+        'qwen' => [
+            'endpoints' => [
+                'https://dashscope-intl.aliyuncs.com/apps/anthropic' => [
+                    'label' => 'Pay-as-you-go (international)',
+                    'models' => ['opus' => 'qwen3.7-max', 'sonnet' => 'qwen3.7-max', 'haiku' => 'qwen3.6-flash'],
+                ],
+                'https://dashscope.aliyuncs.com/apps/anthropic' => [
+                    'label' => 'Pay-as-you-go (mainland China)',
+                    'models' => ['opus' => 'qwen3.7-max', 'sonnet' => 'qwen3.7-max', 'haiku' => 'qwen3.6-flash'],
+                ],
+                'https://coding-intl.dashscope.aliyuncs.com/apps/anthropic' => [
+                    'label' => 'Coding Plan',
+                    'models' => ['opus' => 'qwen3.7-plus', 'sonnet' => 'qwen3.7-plus', 'haiku' => 'qwen3.7-plus'],
+                ],
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Agent runner
     |--------------------------------------------------------------------------
     |

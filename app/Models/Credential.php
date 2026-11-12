@@ -13,7 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * An API token for GitHub, GitLab or Anthropic, owned by a team or by one user.
+ * A token for a git host (GitHub, GitLab) or an AI provider (Anthropic, Claude subscription, Meta, Qwen),
+ * owned by a team or by one user. Claude subscriptions are always personal.
  *
  * @property int $id
  * @property int|null $team_id

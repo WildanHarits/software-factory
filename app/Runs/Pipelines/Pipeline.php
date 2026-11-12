@@ -47,10 +47,15 @@ abstract class Pipeline
             ?? throw new RunFailed('This project has no git token. Pick one in the project settings.');
     }
 
-    protected function aiCredential(Project $project): Credential
+    /**
+     * The AI token for this run: the project's key, or the Claude subscription of whoever started it.
+     */
+    protected function aiCredential(Run $run): Credential
     {
-        return $project->aiCredential
-            ?? throw new RunFailed('This project has no Anthropic API key. Pick one in the project settings.');
+        $project = $run->project;
+
+        return $project->aiCredentialFor($run->triggeredBy)
+            ?? throw new RunFailed($project->missingAiCredentialMessage());
     }
 
     /**
@@ -93,6 +98,7 @@ abstract class Pipeline
     ): void {
         $project = $run->project;
         $budget = config('factory.runner.max_budget_usd');
+        $credential = $this->aiCredential($run);
 
         $result = $this->agent->run(
             new AgentInvocation(
@@ -100,13 +106,15 @@ abstract class Pipeline
                 prompt: $prompt,
                 model: $run->model ?: $project->default_model,
                 effort: $run->effort ?: $project->default_effort,
-                apiKey: $this->aiCredential($project)->token,
+                apiKey: $credential->token,
                 configDirectory: $this->workspaces->claudeConfigPath($project),
                 timeoutSeconds: (int) config('factory.runner.timeout'),
                 maxBudgetUsd: is_numeric($budget) ? (float) $budget : null,
                 resumeSessionId: $resumeSessionId,
                 environment: $environment,
                 appendSystemPrompt: self::UNATTENDED_PROMPT,
+                provider: $credential->provider,
+                baseUrl: $credential->base_url,
             ),
             onEvent: fn (string $kind, ?string $title, ?string $body) => $log->record($kind, $title, $body),
             shouldCancel: fn () => $run->cancelRequested(),

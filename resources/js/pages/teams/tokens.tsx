@@ -10,6 +10,7 @@ type Props = {
     team: { name: string; slug: string };
     credentials: CredentialSummary[];
     providers: Option<CredentialProvider>[];
+    qwenEndpoints: Option[];
     canManage: boolean;
 };
 
@@ -17,6 +18,7 @@ export default function TeamTokens({
     team,
     credentials,
     providers,
+    qwenEndpoints,
     canManage,
 }: Props) {
     return (
@@ -36,7 +38,7 @@ export default function TeamTokens({
                     title="Team tokens"
                     description={
                         canManage
-                            ? 'Shared GitHub, GitLab and Anthropic tokens for this team. Every member can use them on projects; only owners and admins can change them.'
+                            ? 'Shared git and AI tokens for this team. Every member can use them on projects; only owners and admins can change them.'
                             : 'Shared tokens for this team. Only owners and admins can add or change them.'
                     }
                 />
@@ -44,6 +46,7 @@ export default function TeamTokens({
                 <CredentialsManager
                     credentials={credentials}
                     providers={providers}
+                    qwenEndpoints={qwenEndpoints}
                     storeForm={store.form(team.slug)}
                     canManage={canManage}
                     emptyText="This team has no shared tokens yet."

@@ -103,7 +103,7 @@ class TicketWorkflow
         }
 
         if ($target->isPhase() || $target === TicketStage::Review) {
-            $this->ensureProjectCanRun($ticket->project);
+            $this->ensureProjectCanRun($ticket->project, $user);
         }
 
         $ticket->forceFill([
@@ -145,7 +145,7 @@ class TicketWorkflow
             $this->fail('There is no agent session to reply to.');
         }
 
-        $this->ensureProjectCanRun($ticket->project);
+        $this->ensureProjectCanRun($ticket->project, $user);
 
         // In Review, changes go to the Implement session; pushing them updates the pull request.
         return $this->queue($ticket, $inReview ? RunType::Implement : $ticket->stage->runType(), $user, ['reply' => $message]);
@@ -166,7 +166,7 @@ class TicketWorkflow
             $this->fail('Only phases can be run again.');
         }
 
-        $this->ensureProjectCanRun($ticket->project);
+        $this->ensureProjectCanRun($ticket->project, $user);
 
         return $this->queue($ticket, $ticket->stage->runType(), $user, []);
     }
@@ -182,7 +182,7 @@ class TicketWorkflow
             $this->fail('Pull requests are opened from Review.');
         }
 
-        $this->ensureProjectCanRun($ticket->project);
+        $this->ensureProjectCanRun($ticket->project, $user);
 
         return $this->queue($ticket, RunType::Publish, $user, []);
     }
@@ -267,7 +267,7 @@ class TicketWorkflow
         }
     }
 
-    private function ensureProjectCanRun(Project $project): void
+    private function ensureProjectCanRun(Project $project, ?User $user): void
     {
         if (! $project->speckit_initialized) {
             $this->fail('Set up Spec Kit in this repository first.');
@@ -277,8 +277,8 @@ class TicketWorkflow
             $this->fail('This project has no git token. Pick one in the project settings.');
         }
 
-        if (! $project->ai_credential_id) {
-            $this->fail('This project has no Anthropic API key. Pick one in the project settings.');
+        if (! $project->aiCredentialFor($user)) {
+            $this->fail($project->missingAiCredentialMessage());
         }
     }
 

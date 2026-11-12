@@ -1,4 +1,10 @@
-export type CredentialProvider = 'github' | 'gitlab' | 'anthropic';
+export type CredentialProvider =
+    | 'github'
+    | 'gitlab'
+    | 'anthropic'
+    | 'claude_subscription'
+    | 'meta'
+    | 'qwen';
 
 export type Option<T extends string = string> = {
     value: T;

@@ -278,9 +278,11 @@ export default function ShowProject({
                                             label: 'Project principles (optional)',
                                             placeholder:
                                                 'e.g. Laravel + React. Every feature has tests. Accessibility matters. Keep dependencies few.',
-                                            help: project.ai_credential
-                                                ? 'If you fill this in, the agent writes the constitution from it in the same pull request.'
-                                                : 'Writing the constitution needs an Anthropic key on this project. Leave empty to only install Spec Kit.',
+                                            help:
+                                                project.ai_credential ||
+                                                project.ai_uses_member_subscription
+                                                    ? 'If you fill this in, the agent writes the constitution from it in the same pull request.'
+                                                    : 'Writing the constitution needs an AI key on this project. Leave empty to only install Spec Kit.',
                                         }}
                                         submitLabel="Start setup"
                                         models={models}
@@ -308,10 +310,16 @@ export default function ShowProject({
                         <p className="text-sm text-muted-foreground">
                             {project.approval_mode_label}
                         </p>
-                        <CredentialStatus
-                            credential={project.ai_credential}
-                            missing="No Anthropic key. Agents can't run until one is set."
-                        />
+                        {project.ai_uses_member_subscription ? (
+                            <p className="text-sm text-muted-foreground">
+                                Runs on each member's own Claude subscription
+                            </p>
+                        ) : (
+                            <CredentialStatus
+                                credential={project.ai_credential}
+                                missing="No AI key. Agents can't run until one is set."
+                            />
+                        )}
                     </Card>
                 </div>
 

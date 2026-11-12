@@ -21,7 +21,7 @@ class SetupSpecKit extends Pipeline
 
         if ($principles !== '') {
             // Fail early, before cloning, if the agent step can't run.
-            $this->aiCredential($run->project);
+            $this->aiCredential($run);
         }
 
         $worktree = $this->checkout($run, $log, "software-factory/setup-spec-kit-{$run->id}");

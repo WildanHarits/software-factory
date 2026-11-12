@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Credential;
 use App\Models\Project;
 use App\Models\Team;
+use App\Runner\Agent\ProviderModels;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -22,6 +23,7 @@ class CredentialPageController extends Controller
         return Inertia::render('settings/tokens', [
             'credentials' => $this->summaries($request->user()->credentials()->with('user')->get()),
             'providers' => CredentialProvider::options(),
+            'qwenEndpoints' => $this->qwenEndpoints(),
         ]);
     }
 
@@ -35,7 +37,8 @@ class CredentialPageController extends Controller
         return Inertia::render('teams/tokens', [
             'team' => ['name' => $team->name, 'slug' => $team->slug],
             'credentials' => $this->summaries($team->credentials()->with('team')->get()),
-            'providers' => CredentialProvider::options(),
+            'providers' => CredentialProvider::options(includeSubscription: false),
+            'qwenEndpoints' => $this->qwenEndpoints(),
             'canManage' => $request->user()->can('manageCredentials', $team),
         ]);
     }
@@ -60,6 +63,17 @@ class CredentialPageController extends Controller
                 'projects_count' => $usage->filter(fn (Project $project) => $project->git_credential_id === $credential->id
                     || $project->ai_credential_id === $credential->id)->count(),
             ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    private function qwenEndpoints(): array
+    {
+        return collect(ProviderModels::qwenEndpoints())
+            ->map(fn (string $label, string $url) => ['value' => $url, 'label' => $label])
             ->values()
             ->all();
     }

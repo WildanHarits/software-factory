@@ -52,15 +52,41 @@ const TOKEN_HELP: Record<CredentialProvider, ReactNode> = {
     ),
     anthropic: (
         <>
-            An API key from the Anthropic Console. It's used to run Claude Code
-            for this team's projects.
+            An API key from the Anthropic Console, billed per token. Runs Claude
+            Code for every project that picks it.
+        </>
+    ),
+    claude_subscription: (
+        <>
+            Your Pro, Max or Team plan instead of a paid API key. On your own
+            computer run <code>claude setup-token</code>, sign in, and paste the
+            token it prints (it starts with <code>sk-ant-oat</code> and lasts a
+            year). It's only used for runs you start, never shared with your
+            team.
+        </>
+    ),
+    meta: (
+        <>
+            A Meta Model API key. Claude Code runs on Meta's Muse models through
+            Meta's Anthropic-compatible endpoint.
+        </>
+    ),
+    qwen: (
+        <>
+            An Alibaba Model Studio key. Claude Code runs on Qwen models through
+            Model Studio's Anthropic-compatible endpoint. Pick the plan the key
+            belongs to; a key only works with its own plan.
         </>
     ),
 };
 
+/** Providers whose checked account name is worth showing (who or which plan). */
+const SHOWS_ACCOUNT: CredentialProvider[] = ['github', 'gitlab', 'qwen'];
+
 type Props = {
     credentials: CredentialSummary[];
     providers: Option<CredentialProvider>[];
+    qwenEndpoints: Option[];
     storeForm: RouteFormDefinition<'post'>;
     canManage: boolean;
     emptyText: string;
@@ -69,6 +95,7 @@ type Props = {
 export default function CredentialsManager({
     credentials,
     providers,
+    qwenEndpoints,
     storeForm,
     canManage,
     emptyText,
@@ -78,6 +105,7 @@ export default function CredentialsManager({
             {canManage ? (
                 <AddCredentialDialog
                     providers={providers}
+                    qwenEndpoints={qwenEndpoints}
                     storeForm={storeForm}
                 >
                     <Button data-test="add-token-button">
@@ -91,6 +119,7 @@ export default function CredentialsManager({
                     <CredentialRow
                         key={credential.id}
                         credential={credential}
+                        qwenEndpoints={qwenEndpoints}
                         canManage={canManage}
                     />
                 ))}
@@ -108,9 +137,11 @@ export default function CredentialsManager({
 
 function CredentialRow({
     credential,
+    qwenEndpoints,
     canManage,
 }: {
     credential: CredentialSummary;
+    qwenEndpoints: Option[];
     canManage: boolean;
 }) {
     const verified = credential.last_verified_at !== null;
@@ -136,10 +167,12 @@ function CredentialRow({
                         <CircleCheck className="size-4 shrink-0" />
                         Works
                         {credential.account_name &&
-                        credential.provider !== 'anthropic'
+                        SHOWS_ACCOUNT.includes(credential.provider)
                             ? ` · ${credential.account_name}`
                             : ''}
-                        {credential.base_url ? ` · ${credential.base_url}` : ''}
+                        {credential.base_url && credential.provider === 'gitlab'
+                            ? ` · ${credential.base_url}`
+                            : ''}
                     </p>
                 ) : (
                     <p className="flex items-start gap-1.5 text-sm text-red-700 dark:text-red-400">
@@ -192,7 +225,10 @@ function CredentialRow({
                         )}
                     </Form>
 
-                    <EditCredentialDialog credential={credential}>
+                    <EditCredentialDialog
+                        credential={credential}
+                        qwenEndpoints={qwenEndpoints}
+                    >
                         <Button
                             variant="ghost"
                             size="sm"
@@ -221,10 +257,12 @@ function CredentialRow({
 
 function AddCredentialDialog({
     providers,
+    qwenEndpoints,
     storeForm,
     children,
 }: {
     providers: Option<CredentialProvider>[];
+    qwenEndpoints: Option[];
     storeForm: RouteFormDefinition<'post'>;
     children: ReactNode;
 }) {
@@ -290,9 +328,12 @@ function AddCredentialDialog({
                                     id="name"
                                     name="name"
                                     placeholder={
-                                        provider === 'anthropic'
-                                            ? 'Production key'
-                                            : 'Deploy bot'
+                                        provider === 'github' ||
+                                        provider === 'gitlab'
+                                            ? 'Deploy bot'
+                                            : provider === 'claude_subscription'
+                                              ? 'My Max plan'
+                                              : 'Production key'
                                     }
                                     required
                                     autoComplete="off"
@@ -319,6 +360,13 @@ function AddCredentialDialog({
                                 <BaseUrlField error={errors.base_url} />
                             ) : null}
 
+                            {provider === 'qwen' ? (
+                                <QwenPlanField
+                                    options={qwenEndpoints}
+                                    error={errors.base_url}
+                                />
+                            ) : null}
+
                             <DialogFooter className="gap-2">
                                 <DialogClose asChild>
                                     <Button variant="secondary">Cancel</Button>
@@ -343,9 +391,11 @@ function AddCredentialDialog({
 
 function EditCredentialDialog({
     credential,
+    qwenEndpoints,
     children,
 }: {
     credential: CredentialSummary;
+    qwenEndpoints: Option[];
     children: ReactNode;
 }) {
     const [open, setOpen] = useState(false);
@@ -401,6 +451,14 @@ function EditCredentialDialog({
 
                             {credential.provider === 'gitlab' ? (
                                 <BaseUrlField
+                                    error={errors.base_url}
+                                    defaultValue={credential.base_url ?? ''}
+                                />
+                            ) : null}
+
+                            {credential.provider === 'qwen' ? (
+                                <QwenPlanField
+                                    options={qwenEndpoints}
                                     error={errors.base_url}
                                     defaultValue={credential.base_url ?? ''}
                                 />
@@ -498,6 +556,38 @@ function BaseUrlField({
             <p className="text-xs text-muted-foreground">
                 Only for self-hosted GitLab. Leave empty for gitlab.com.
             </p>
+            <InputError message={error} />
+        </div>
+    );
+}
+
+function QwenPlanField({
+    options,
+    error,
+    defaultValue,
+}: {
+    options: Option[];
+    error?: string;
+    defaultValue?: string;
+}) {
+    return (
+        <div className="grid gap-2">
+            <Label htmlFor="base_url">Plan</Label>
+            <Select
+                name="base_url"
+                defaultValue={defaultValue || options[0]?.value}
+            >
+                <SelectTrigger id="base_url">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    {options.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
             <InputError message={error} />
         </div>
     );

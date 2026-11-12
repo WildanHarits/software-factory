@@ -77,6 +77,7 @@ class ProjectController extends Controller
             'repo_private' => $repository->private,
             'git_credential_id' => $credential->id,
             'ai_credential_id' => $data['ai_credential_id'] ?? null,
+            'ai_uses_member_subscription' => (bool) ($data['ai_uses_member_subscription'] ?? false),
             'default_model' => $data['default_model'],
             'default_effort' => $data['default_effort'],
             'approval_mode' => $data['approval_mode'],
@@ -228,6 +229,7 @@ class ProjectController extends Controller
             'description' => $data['description'] ?? null,
             'git_credential_id' => $data['git_credential_id'],
             'ai_credential_id' => $data['ai_credential_id'] ?? null,
+            'ai_uses_member_subscription' => (bool) ($data['ai_uses_member_subscription'] ?? false),
             'default_model' => $data['default_model'],
             'default_effort' => $data['default_effort'],
             'approval_mode' => $data['approval_mode'],
@@ -301,8 +303,10 @@ class ProjectController extends Controller
         return [
             'gitCredentials' => $credentials->filter(fn (Credential $credential) => $credential->provider->isGit())
                 ->map->toSummary()->values(),
-            'aiCredentials' => $credentials->reject(fn (Credential $credential) => $credential->provider->isGit())
+            // Subscriptions aren't listed: a project can only use them as "each member's own".
+            'aiCredentials' => $credentials->filter(fn (Credential $credential) => $credential->provider->isAi() && ! $credential->provider->isSubscription())
                 ->map->toSummary()->values(),
+            'hasSubscription' => $credentials->contains(fn (Credential $credential) => $credential->provider->isSubscription() && $credential->user_id === $user->id),
             'models' => $this->options(config('factory.models')),
             'efforts' => $this->options(config('factory.efforts')),
             'approvalModes' => ApprovalMode::options(),

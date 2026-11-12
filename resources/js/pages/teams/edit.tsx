@@ -149,7 +149,7 @@ export default function TeamEdit({
                     <Heading
                         variant="small"
                         title="Tokens"
-                        description="Shared GitHub, GitLab and Anthropic tokens for this team's projects"
+                        description="Shared git and AI tokens for this team's projects"
                     />
 
                     <Button variant="outline" asChild>

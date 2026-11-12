@@ -31,6 +31,7 @@ use Illuminate\Support\Str;
  * @property bool $repo_private
  * @property int|null $git_credential_id
  * @property int|null $ai_credential_id
+ * @property bool $ai_uses_member_subscription
  * @property string $default_model
  * @property string $default_effort
  * @property ApprovalMode $approval_mode
@@ -52,7 +53,7 @@ use Illuminate\Support\Str;
 #[Fillable([
     'team_id', 'name', 'slug', 'description',
     'provider', 'repo_full_name', 'repo_external_id', 'repo_web_url', 'repo_clone_url', 'default_branch', 'repo_private',
-    'git_credential_id', 'ai_credential_id',
+    'git_credential_id', 'ai_credential_id', 'ai_uses_member_subscription',
     'default_model', 'default_effort', 'approval_mode', 'merge_policy',
     'speckit_initialized', 'speckit_checked_at', 'created_by',
 ])]
@@ -117,6 +118,32 @@ class Project extends Model
     }
 
     /**
+     * The AI token a run started by this person uses: the project's key, or, when the project
+     * runs on members' own subscriptions, that person's Claude subscription token.
+     */
+    public function aiCredentialFor(?User $user): ?Credential
+    {
+        if (! $this->ai_uses_member_subscription) {
+            return $this->aiCredential;
+        }
+
+        return $user?->credentials()
+            ->where('provider', CredentialProvider::ClaudeSubscription)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Why a run started by this person can't get an AI token.
+     */
+    public function missingAiCredentialMessage(): string
+    {
+        return $this->ai_uses_member_subscription
+            ? __('This project runs on each member\'s own Claude subscription, and you haven\'t added yours. Add it under Settings → Tokens.')
+            : __('This project has no AI key. Pick one in the project settings.');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function creator(): BelongsTo
@@ -146,6 +173,7 @@ class Project extends Model
             'ai_credential_id' => $this->ai_credential_id,
             'git_credential' => $this->gitCredential?->toSummary(),
             'ai_credential' => $this->aiCredential?->toSummary(),
+            'ai_uses_member_subscription' => $this->ai_uses_member_subscription,
             'default_model' => $this->default_model,
             'default_model_label' => config("factory.models.{$this->default_model}", $this->default_model),
             'default_effort' => $this->default_effort,
@@ -203,6 +231,7 @@ class Project extends Model
             'merge_policy' => MergePolicy::class,
             'repo_private' => 'boolean',
             'speckit_initialized' => 'boolean',
+            'ai_uses_member_subscription' => 'boolean',
             'speckit_checked_at' => 'datetime',
             'webhook_secret' => 'encrypted',
             'webhook_last_received_at' => 'datetime',

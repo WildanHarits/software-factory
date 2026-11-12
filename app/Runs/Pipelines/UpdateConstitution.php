@@ -19,7 +19,7 @@ class UpdateConstitution extends Pipeline
             throw new RunFailed('Describe what the constitution should say.');
         }
 
-        $this->aiCredential($run->project);
+        $this->aiCredential($run);
 
         $worktree = $this->checkout($run, $log, "software-factory/constitution-{$run->id}");
 

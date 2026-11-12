@@ -32,7 +32,7 @@ class TicketPhase extends Pipeline
         $reply = trim((string) ($run->input['reply'] ?? ''));
 
         // Fail before cloning if the agent can't run.
-        $this->aiCredential($run->project);
+        $this->aiCredential($run);
 
         if ($reply !== '' && ! $ticket->session_id) {
             throw new RunFailed('There is no agent session to reply to yet.');

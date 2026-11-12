@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Credentials;
 
-use App\Enums\CredentialProvider;
 use App\Models\Credential;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -20,10 +19,21 @@ class UpdateCredentialRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100'],
             'token' => ['nullable', 'string', 'min:8', 'max:2000'],
-            'base_url' => [
-                'nullable', 'string', 'max:255', 'url:https',
-                ...($credential->provider === CredentialProvider::GitLab ? [] : ['prohibited']),
-            ],
+            'base_url' => StoreCredentialRequest::baseUrlRules($credential->provider),
+        ];
+    }
+
+    public function after(): array
+    {
+        return [
+            function ($validator) {
+                /** @var Credential $credential */
+                $credential = $this->route('credential');
+
+                if ($credential->provider->isSubscription() && $this->filled('token') && ! str_starts_with((string) $this->input('token'), 'sk-ant-oat')) {
+                    $validator->errors()->add('token', __('Paste the token printed by `claude setup-token` (it starts with sk-ant-oat).'));
+                }
+            },
         ];
     }
 

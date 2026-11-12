@@ -90,7 +90,9 @@ function ProjectCard({
         !project.git_credential || !project.git_credential.last_verified_at
             ? 'Git token missing or not working'
             : null,
-        !project.ai_credential ? 'No Anthropic key' : null,
+        !project.ai_credential && !project.ai_uses_member_subscription
+            ? 'No AI key'
+            : null,
     ].filter(Boolean);
 
     return (

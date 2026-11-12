@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Credentials;
 
 use App\Actions\Credentials\VerifyCredential;
 use App\Data\Providers\RepositoryNamespace;
+use App\Enums\CredentialProvider;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Credentials\StoreCredentialRequest;
 use App\Http\Requests\Credentials\UpdateCredentialRequest;
@@ -62,7 +63,7 @@ class CredentialController extends Controller
 
         $credential->name = $data['name'];
 
-        if ($credential->provider->isGit()) {
+        if (in_array($credential->provider, [CredentialProvider::GitLab, CredentialProvider::Qwen], true)) {
             $credential->base_url = $data['base_url'];
         }
 
